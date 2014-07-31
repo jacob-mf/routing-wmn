@@ -1,0 +1,43 @@
+Aquí se encuentra una pequeña descripción del proyecto WMN-routing para OMNeT++ 4.2.1
+Dicho proyecto se puede importar al espacio de trabajo de manera normal con la herramienta típica de OMNeT de importación a través del git o descargando archivo zip, descomprimiéndolo en directorio e importando directorio (mejor renombrar a wmn-routing)
+
+WMN-routing (Encaminamiento sobre redes malladas inalámbricas de Wireless Mesh Networks routing) es un proyecto que presenta distintos protocolos de encaminamiento posibles a aplicar sobre una red mallada inalámbrica sencilla, a elegir entre la red de dos nodos KliKle y la red Wmn-base o WmnStatic (configurables, numero de nodos entre 9-415, segunda especial para protocolo estático) que se seleccionan en el fichero de inicialización 'omnetpp.ini' , aunque ya van incluidos en las configuraciones 'Base', 'Static' y 'KliKle' incluidas.
+
+Los archivos 'AntNet.cc' y 'AntNetAP.cc' son los más importante del proyecto, muy similares entre sí, describen los protocolos de encaminamiento a aplicar sobre el escenario elegido, para un terminal sencillo o un punto de acceso (nodo de malla) respectivamente.
+En el anteriormente mencionado fichero 'omnetpp.ini' se selecciona el protocolo de encaminamiento y resto de parámetros de importancia, por el valor del parámetro 'sort' que distingue: 1: estático, 2: AntWMNet , 3: Cpant y 4: AODV
+
+1. Encaminamiento de camino más corto estático. Las tablas de encaminamiento se rellenan en el comienzo de la simulación, mediante la clase cTopology; el modelo se mantiene simple intencionadamente para mejor entendimiento.
+
+La topología de red es la bien conocida "NTT backbone" creada por Mudassar Farooq.
+
+Cada nodo accede a la topología de la red de manera independiente, usando el objeto cTopology; luego se computan los caminos más cortos hacia el resto de nodos, y se almacenan los primeros nodos del camino en la celda de la tabla de próximo salto. (Realmente la tabla contiene el número de puerto del próximo salto, no la dirección del nodo - la tabla contiene la dirección destino -> próxima dirección de salto). Todo esto sucede una sola vez, al comienzo de la simulación. La topología se mantiene estática, así que no se necesita nada para mantener las tablas actualizadas.
+
+Una vez las tablas se completan, los nodos comienzan el envío de paquetes a intervalos aleatorios o fijos. Cada nodo tiene lista de direcciones de destino en un parámetro, y para cada paquete elige aleatoriamente un destino de esta lista. Este caso no está pensado para WMN, es el mismo que viene en /samples/routing ejemplo clásico de encaminamiento de redes incluido por defecto en OMNeT++, desarrollado por Andras Varga.
+Probado en red 'WmnStatic', no funciona correctamente en enotrnos dinámicos.
+
+2. Protocolo de encaminamiento AntWMNet, base del proyecto, basado en las técnicas ACO (Ant Colony Optimization). El protocolo comienza ya desde los primeros paquetes de traza (beacon o hello) que se intercambian los vecinos, que actualizan las tablas de vecindad y de encaminamiento (valor de feromonas, estimación de saltos y tiempos). Luego se inicia proceso reactivo de exploración en los nodos fuente, que buscan los mejores caminos, por inundación, mediante paquetes hormigas FA. Al alcanzar destino se generan hormigas de retroceso BA que marcan el camino con los valores de feromonas (según métrica elegida). A su vez comienza en el tiempo escogido, la transmisión de datos entre nodos fuente y destino. Al mismo tiempo se lanzan los procesos proactivos de chequeo de rutas por BA proactivas y de difusión de feromonas (en paquetes hello), si se detectan cambios en topología. El protocolo lanza proceso de reparación local, si se encuentra un paquete de datos sin alternativa positiva de concentración de feromonas (tabla de encaminamiento, valor principal) en su ruta.  
+
+3. Cpant no está disponible en este momento.
+CPANT (Colored Pheromones Ants = Coloración de Feromonas con Hormigas) es un algoritmo basado en la optimización de la colonia de hormigas de M. Dorigo y su aplicación en redes ad hoc como protocolo de encaminamiento AntNet, que busca la optimización de llegada de paquetes según su prioridad, creando caminos diferentes, según tipo de paquetes, que distinguen cierta clasificación de tráficos (1: P2P o FTP, 2: TCP 80 navegación 3: Streaming (Flash, MPEG...)  4: Conversacional, VoIP ), que necesitan cada uno de rutas con diferentes características.
+Algoritmo diseñado por Martina Umlauft y Wilfried Elmenreich.
+
+4. AODV (Adhoc On-Demand Distance-Vector) algoritmo que hemos escogido como rival al nuestro en resultados, uno de los mas famosos, puramente reactivo. El proceso incial es bastante similar, se lanzan RREQ (route request packets) en los nodos fuente que no haya ruta configurada, y por inundación se busca el camino. Luego un paquete RREP (route reply) vuelve atrás, actualizando en los nodos atravesados por la ruta que tuvo éxito. El algoritmo responde a fallos, lanzando nuevos RREQ si una ruta falla u opcionalmente, iniciando proceso de reparación local.
+Actualmente necesita reparación, da resultados erróneos, parece afectado por implementación de AntWMNet, buena idea futura, separar protocolos de encaminamiento, diferentes ficheros.
+---------------------------------------------
+
+Hay tres aplicaciones (apps de envío de paquetes) posibles: 'App' genera paquetes en tiempos aleatorios(según función 'exponential'), mientras 'BurstApp'  alterna entre tiempos activos e inactivos, demostrando el uso de máquina de estados finitos, ambas opciones son para el caso sencillo de encaminamiento estático, en los casos mas interesantes, seleccionamos el protocolo 'AppUDP', que genera paquetes de datos en nodos fuente seleccionados en vector 'srcAddresses' hacia nodos destino seleccionados en 'destAddresses'. Se seleccionan en el fichero 'omnetpp.ini' como:
+**.appType="App" o "BurstyApp" o "AppUDP" (el usado para pruebas en AODV o AntWMNet)
+  
+Sólo ha sido probado en la red 'WmnBase', 'WMNStatic' y 'KliKle' en directorio /networks
+
+Revisar archivos 'License' y 'gpl' para ver detalles de licencia
+-------------------------
+Añadida en github carpeta /images/msg con iconos nuevos para los paquetes hormiga FA, BA (forward/backward ant)
+Dichos archivos deben de ir en la carpeta /images/msg del directorio principal donde esté instalado OMNeT++,  normalmente del tipo /omnetpp-4.21 por ejemplo, depende de la versión y opciones escogidas en la instalación.
+------------------------ 
+Salida de archivos de resultados, para hojas de cálculo:
+'aodv-control.csv' resultados en AODV
+'app-packets.csv' resultados desde nivel de Aplicación UDP
+'control-packet.csv' resultados para AntWMNet
+
+2012-4 L.Jacob Mariscal Fernández basado en ejemplo de encaminamiento de Copyright (C) 1992-2008 Andras Varga
