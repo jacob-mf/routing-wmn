@@ -2,6 +2,7 @@ routing-wmn
 ===========
 
 OMNeT++ project about routing protocols under wireless mesh networks. Presents main brand new ACO based routing protocol AntWMNet, and  AODV and static protocols versions, also 3 WMNs samples
+
 ---------------------
 ﻿This is a brief description of the WMN-routing project for OMNeT++ 4.2.1
 You can import the project to your workspace and run it as usual by git or download zip and unzip in directory to import to OMNet workspace.
@@ -53,9 +54,11 @@ as **.appType= 'App' or 'BurstyApp' or 'AppUDP' (most used for AntWMNet and AODV
 
 Project is only tested in 'WMNBase' and 'WmnStatic' network in dir /networks
 Check files 'License' and 'gpl' for license details
+
 -------------------------
 Added in github on folder /images/msg new icons for ant packets FA, BA (forward/backward ant)
 These files should be in dir /images/msg from main OMNeT++ directory, e.g. /omnetpp-4.21  ,depends on version.
+
 -------------------------
 Output files, statistics, for calc sheets applications (xCel, Calc or similar);
 'aodv-control.csv' AODV results
