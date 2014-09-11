@@ -1,3 +1,3 @@
 // this sample simulation is part of OMNeT++
-// L. Jacob Mariscal Fern√°ndez 2014
+// L. Jacob Mariscal Fern·ndez 2014
 @license(gpl);
