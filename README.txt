@@ -1,14 +1,14 @@
 routing-wmn
 ===========
 
-OMNeT++ project about routing protocols under wireless mesh networks. Presents main brand new ACO based routing protocol AntWMNet and old famous AODV and static (Dijkstra) protocols versions, also 3 WMNs samples (network files)
+OMNeT++ project about routing protocols under wireless mesh networks. Presents main brand new ACO based routing protocol AntWMNet and old famous AODV and static (Dijkstra) protocols versions, also 4 WMNs samples (network files)
 
 ---------------------
 ﻿This is a brief description of the WMN-routing project for OMNeT++ 4.2.1
 You can import the project to your workspace and run it as usual by git or download zip and unzip in directory to import to OMNeT++ workspace.
 Be aware to adjust your package settings that depends on which directory the project is placed in.
 
-WMN-routing (Wireless Mesh Networks routing) is a project about different routing protocols to apply on wireless mesh networks, to KliKle (2 nodes) WmnStatic and  Wmn-base (9-415 nodes possible) capable to selected from init file 'omnetpp.ini' included in configurations 'Base' , 'Static' and 'KliKle'.
+WMN-routing (Wireless Mesh Networks routing) is a project about different routing protocols to apply on wireless mesh networks, to KliKle (2 nodes) WmnStatic ,WmnStats  and  Wmn-base (9-415 nodes possible) capable to selected from init file 'omnetpp.ini' included in configurations 'Base' , 'Static' , 'Stats' and 'KliKle'.
 
 Most important files are 'AntNet.cc' y 'AntNetAP.cc' , there are very  similar, describe routing protocols for normal terminal or access point (mesh node) respectively.
 Also in 'omnetpp.ini' file, the routing protocol and other important parameters are selected, 'sort' parameter specifies routing protocol as: 1: static, 2: AntWMNet , 3: Cpant and 4: AODV
@@ -52,7 +52,7 @@ There are three apps provided: App generates packets with exponential interarriv
 You can choose them in the 'omnetpp.ini' file 
 as **.appType= 'App' or 'BurstyApp' or 'AppUDP' (most used for AntWMNet and AODV)
 
-Project is only tested in 'KliKle', 'WMNBase' and 'WmnStatic' networks in dir /networks
+Project is only tested in 'KliKle', 'WMNBase', WmnStats and 'WmnStatic' networks in dir /networks
 Check files 'License' and 'gpl' for license details
 
 -------------------------
