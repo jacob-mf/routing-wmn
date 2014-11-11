@@ -2,6 +2,7 @@
 Dicho proyecto se puede importar al espacio de trabajo de manera normal con la herramienta típica de OMNeT de importación a través del git o descargando archivo zip, descomprimiéndolo en directorio e importando directorio (mejor renombrar a wmn-routing)
 
 WMN-routing (Encaminamiento sobre redes malladas inalámbricas de Wireless Mesh Networks routing) es un proyecto que presenta distintos protocolos de encaminamiento posibles a aplicar sobre una red mallada inalámbrica sencilla, a elegir entre la red de dos nodos KliKle y las redes Wmn-base, WmnStats o WmnStatic (configurables, numero de nodos entre 9-415, segunda especial para protocolo estático, tercera mejor para estadísticas) que se seleccionan en el fichero de inicialización 'omnetpp.ini' , aunque ya van incluidos en las configuraciones 'Base', 'Static' y 'KliKle' incluidas.
+KliKle (red de 2 nodos network) es el escenario más simple. WmnStatic sirve para la simulación en entorno estático. WmnStats sirve para representar mejor las gráficas en la herramienta interna de análisis de Omnet y  Wmn-base (red de 9-415 nodos) es el escenario base.
 
 Los archivos 'AntNet.cc' y 'AntNetAP.cc' son los más importante del proyecto, muy similares entre sí, describen los protocolos de encaminamiento a aplicar sobre el escenario elegido, para un terminal sencillo o un punto de acceso (nodo de malla) respectivamente.
 En el anteriormente mencionado fichero 'omnetpp.ini' se selecciona el protocolo de encaminamiento y resto de parámetros de importancia, por el valor del parámetro 'sort' que distingue: 1: estático, 2: AntWMNet , 3: Cpant y 4: AODV
@@ -28,7 +29,7 @@ Actualmente necesita reparación, da resultados erróneos, parece afectado por i
 Hay tres aplicaciones (apps de envío de paquetes) posibles: 'App' genera paquetes en tiempos aleatorios(según función 'exponential'), mientras 'BurstApp'  alterna entre tiempos activos e inactivos, demostrando el uso de máquina de estados finitos, ambas opciones son para el caso sencillo de encaminamiento estático, en los casos mas interesantes, seleccionamos el protocolo 'AppUDP', que genera paquetes de datos en nodos fuente seleccionados en vector 'srcAddresses' hacia nodos destino seleccionados en 'destAddresses'. Se seleccionan en el fichero 'omnetpp.ini' como:
 **.appType="App" o "BurstyApp" o "AppUDP" (el usado para pruebas en AODV o AntWMNet)
   
-Sólo ha sido probado en las redes 'WmnBase', 'WMNStatic', WmnStats y 'KliKle' en directorio /networks
+Sólo ha sido probado en las redes 'WmnBase', 'WMNStatic', 'WmnStats' y 'KliKle' en directorio /networks
 
 Revisar archivos 'License' y 'gpl' para ver detalles de licencia
 -------------------------
