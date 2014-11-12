@@ -1,7 +1,7 @@
 //
 // This file is part of an OMNeT++/OMNEST simulation example.
 //
-// 2012-4 L.Jacob Mariscal Fernández based on Copyright (C) 1992-2008 Andras Varga
+// 2012-4 L.Jacob Mariscal FernÃ¡ndez based on Copyright (C) 1992-2008 Andras Varga
 //
 // This file is distributed WITHOUT ANY WARRANTY. See the file
 // `license' for details on this and other legal matters.
@@ -37,6 +37,7 @@ class AntNetAP : public cSimpleModule
     cPar *maxHopsRate; // Maximum hops Rate coefficient
     cPar *rTableInit;  // routing table initialisation flag
     cPar *updateVTime; // Visiting table update time
+    cPar *sendIaTime; // interval of data packets
     cPar *replyTime;  // reply time until check if route request was successful
     cPar *helloTime; // time interval to send hello packets , packets with kind = 1
     cPar *evaporation; // flag if evaporation occurs
@@ -66,6 +67,7 @@ class AntNetAP : public cSimpleModule
 
     // Local variables
     int myAddress; // node network address
+    int numData;      // Data packets total
     int maxHops;     // maximum hops estimation
     int controlHops; // counter of control packets hops (overhead cost)
     int controlHops2; // counter of control packets (pheromone diffusion) for other overhead cost
@@ -115,6 +117,9 @@ class AntNetAP : public cSimpleModule
     // Signals
     simsignal_t dropSignal;
     simsignal_t outputIfSignal;
+    simsignal_t controlHopsSignal;
+    simsignal_t overheadCostSignal;
+    simsignal_t hitRatioSignal;
 
     // Local functions
     bool locateNeighbor(int dest , int & outgate); // find and get gate of destination, if its in neighbour table
@@ -230,6 +235,7 @@ void AntNetAP::initialize()
     helloTime = &par("helloTime");
     maxArray=&par("maxArray");
     localRepair= &par("localRepair");
+    sendIaTime=&par("sendIaTime");
     goodDiffusion = &par("goodDiffusion");
     maxLocalRepairFlooding = &par("maxLocalRepairFlooding");
     hopTime= &par("hopTime");
@@ -244,6 +250,9 @@ void AntNetAP::initialize()
 
     dropSignal = registerSignal("drop");
     outputIfSignal = registerSignal("outputIf");
+    controlHopsSignal= registerSignal("controlHops");
+    overheadCostSignal = registerSignal("overheadCost");
+    hitRatioSignal = registerSignal("hitRatio");
 
     rerrCounter=0;rreqCounter=0;rrepCounter=0;branchA=0; branchB=0; branchC=0; branchD=0;
     baCounter=0;faCounter=0;redundant=0;avgTime1hop=0;avgHops=0;minHops=0;controlHops=0;repairCounter=0;
@@ -259,6 +268,12 @@ void AntNetAP::initialize()
     if (numNodes->longValue()==315) minHops=35; // h,w(18,17)
     if (numNodes->longValue()==409) minHops=40; // h,w (20,20)
     // EV << toDoubleCalc(23.67) << "; " << toDoubleCalc(6) << endl; // check DoubleCalc function
+    if (sendIaTime->doubleValue() == 0.1) numData=1200;
+    else if (sendIaTime->doubleValue() == 0.25) numData=480;
+    else if (sendIaTime->doubleValue() == 0.5) numData=240;
+    else if (sendIaTime->doubleValue() == 0.1666666) numData=720;
+    else if (sendIaTime->doubleValue() == 0.083333) numData=1440;
+    else if (sendIaTime->doubleValue() == 0.125) numData=960;
     WATCH(baCounter);WATCH(faCounter);WATCH(dropCounter);WATCH(dataCounter);
     WATCH(hitCounter);WATCH(totalCounter);WATCH(baCounter);WATCH(nbCounter);
     WATCH(redundant);WATCH(hitCounter);WATCH(avgTravel);
@@ -1840,7 +1855,7 @@ void AntNetAP::updateRPTable (int dest,unsigned int outgate, double cost,int hop
         else ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + ((1/(hops) )* (1 - coefPh->doubleValue())); // use cost as Hops;
     else { // Linear combination of Travel time and hops
         ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + 0.5*( (((1/(hops) )* (1 - coefPh->doubleValue())) + ((1/(cost * 1000) )* (1 - coefPh->doubleValue()))));
-        // use lineal combination ; added 10⁻^3 to normalise (unitary)
+        // use lineal combination ; added 10â�»^3 to normalise (unitary)
         // if value greater than 1 (typical for 1 hops re-update) just recalculate value
         if (ptable [dest] [outgate] > 1)  ptable [dest] [outgate] =  0.5*( (((1/(hops) )* (1 - coefPh->doubleValue())) + ((1/(cost * 1000) )* (1 - coefPh->doubleValue()))));
            }
@@ -3359,6 +3374,8 @@ void AntNetAP::finish()
 //using namespace std;
   totalCounter= dataCounter+count.sum;
   avgHops= avgHops / hitCounter;
+  emit(controlHopsSignal, controlHops);
+  emit(overheadCostSignal, controlHops2 + controlHops);
   if (proBaCounter > 0) EV << "Proactive BA packets: " << proBaCounter << " on node "<< getParentModule()->getName() << endl;
   if (proactiveCounter > 0) EV << "Proactive FA packets: " << proactiveCounter << " on node "<< getParentModule()->getName() << endl;
   if (repairCounter) EV << "Local repair FA packets: " << repairCounter << " on node "<< getParentModule()->getName() << endl;
@@ -3372,6 +3389,7 @@ void AntNetAP::finish()
       EV << "Arrived packets: " << hitCounter << " Hit ratio: " << double (hitCounter)/ double(dataCounter) << endl;
       EV << "Average travel time: " << avgTravel / hitCounter << endl;
       EV << "Average hops: " << avgHops << endl;
+      emit(hitRatioSignal, double (hitCounter)/ double(numData));
       if (mySort->longValue() == 4) { // AODV branch
                 std::ofstream myfile("aodv-control.csv", myfile.app );
 

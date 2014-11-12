@@ -68,6 +68,13 @@ simple AntNet
         @display("i=block/switch");
         @signal[drop](type="long");
         @signal[outputIf](type="int");
+        @signal[controlHops] (type="long");
+        @signal[overheadCost] (type="long");
+		@signal[hitRatio] (type="double");
+
+		@statistic[controlHops](title="hop count of control packets, except pheromone diffusion packets";interpolationmode=none;record=vector?,mean,max);
+		@statistic[overheadCost](title="hop count of control packets, define a new way of overhead cost";interpolationmode=none;record=vector?,mean,max);
+		@statistic[hitRatio](title="Hit ratio of successful arrived data packets";unit=s;record=vector,mean,max;interpolationmode=none); 
         @statistic[drop](title="dropped packet byte length";unit=bytes;record=vector?,count,sum;interpolationmode=none);
         @statistic[outputIf](title="output interface for each routed packet";record=histogram;interpolationmode=none);
     gates:

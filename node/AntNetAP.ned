@@ -48,6 +48,8 @@ simple AntNetAP
         bool localRepair=default(false); // select local repair on error node for AODV option
         double updateVTime @unit(ms) =default(0ms); // time until update Visiting Table 
         											// (default average 1 hop travel time)
+        volatile double sendIaTime @unit(s) = default(exponential(1s)); // time between generating packets,
+        																// here to perform good hit ratio
         double helloTime @unit(s) = default(1s); // time interval to send hello packets , kind = 1 
         double hopTime @unit (s) = default(0.020s); // hop time estimation, default 20ms
         int maxLocalRepairFlooding = default(3) ; // max flooding forwarding in local repair
@@ -63,6 +65,13 @@ simple AntNetAP
         @display("i=block/switch");
         @signal[drop](type="long");
         @signal[outputIf](type="int");
+        @signal[controlHops] (type="long");
+		@signal[overheadCost] (type="long");
+		@signal[hitRatio] (type="double");
+
+		@statistic[controlHops](title="hop count of control packets, except pheromone diffusion packets";interpolationmode=none;record=vector?,mean,max);
+		@statistic[overheadCost](title="hop count of control packets, define a new way of overhead cost";interpolationmode=none;record=vector?,mean,max);
+		@statistic[hitRatio](title="Hit ratio of successful arrived data packets";unit=s;record=vector,mean,max;interpolationmode=none);        
         @statistic[drop](title="dropped packet byte length";unit=bytes;record=vector?,count,sum;interpolationmode=none);
         @statistic[outputIf](title="output interface for each routed packet";record=histogram;interpolationmode=none);
     gates:

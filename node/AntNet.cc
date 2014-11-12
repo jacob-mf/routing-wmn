@@ -1,7 +1,7 @@
 //
 // This file is part of an OMNeT++/OMNEST simulation example.
 //
-// 2012-4 L.Jacob Mariscal Fernández based on Copyright (C) 1992-2008 Andras Varga
+// 2012-4 L.Jacob Mariscal FernÃ¡ndez based on Copyright (C) 1992-2008 Andras Varga
 //
 // This file is distributed WITHOUT ANY WARRANTY. See the file
 // `license' for details on this and other legal matters.
@@ -119,6 +119,9 @@ class AntNet : public cSimpleModule
     // Signals
     simsignal_t dropSignal;
     simsignal_t outputIfSignal;
+    simsignal_t controlHopsSignal;
+    simsignal_t overheadCostSignal;
+    simsignal_t hitRatioSignal;
 
     // Local functions
     int bestHopsEstimation(int dest); // return best hops estimation to destination node
@@ -277,6 +280,9 @@ void AntNet::initialize()
     // signals
     dropSignal = registerSignal("drop");
     outputIfSignal = registerSignal("outputIf");
+    controlHopsSignal= registerSignal("controlHops");
+    overheadCostSignal = registerSignal("overheadCost");
+    hitRatioSignal = registerSignal("hitRatio");
 
     // Local variables
     proactiveCounter=0;phDiffCounter =0; repairCounter=0;//numNb=0;
@@ -525,7 +531,7 @@ void AntNet::initialize()
             //}
             //int temp=3;
             //double test = ptable[myAddress-1] [temp] +  (double) 1/temp;
-            //EV << "Double test: " <<  test << " temp⁻1: " << (double) 1/ temp << " Valor a anterior nodo en tercer puerto: "<< ptable[myAddress-1] [temp]<< endl;
+            //EV << "Double test: " <<  test << " tempâ�»1: " << (double) 1/ temp << " Valor a anterior nodo en tercer puerto: "<< ptable[myAddress-1] [temp]<< endl;
     }
     else // Cpant routing
     {
@@ -2211,13 +2217,13 @@ void AntNet::updateRPTable (int dest,unsigned int outgate, double cost,int hops 
     }
   }
     if (metrics->longValue() ==1) // Travel time
-    ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + ((1/(cost * 1000) )* (1 - coefPh->doubleValue())); // use cost as Travel time; added 10⁻^3 to normalize (unitary)
+    ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + ((1/(cost * 1000) )* (1 - coefPh->doubleValue())); // use cost as Travel time; added 10â�»^3 to normalize (unitary)
     else if (metrics->longValue() == 2) // Hops
         if (hops > 1 )  ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + (double) 1/hops; // use cost as Hops, makes hops more accuracy for paths
         else ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + ((1/(hops) )* (1 - coefPh->doubleValue())); // use cost as Hops;
     else {  // Linear combination of Travel time and hops
         ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + 0.5*( (((1/(hops) )* (1 - coefPh->doubleValue())) + ((1/(cost * 1000) )* (1 - coefPh->doubleValue()))));
-        // use lineal combination ; added 10⁻^3 to normalise (unitary)
+        // use lineal combination ; added 10â�»^3 to normalise (unitary)
         // if value greater than 1 (typical for 1 hops re-update) just recalculate value
         if (ptable [dest] [outgate] > 1)  ptable [dest] [outgate] =  0.5*( (((1/(hops) )* (1 - coefPh->doubleValue())) + ((1/(cost * 1000) )* (1 - coefPh->doubleValue()))));
     }
@@ -3937,6 +3943,8 @@ void AntNet::finish()
   if (repairCounter) EV << "Local repair FA packets: " << repairCounter << " on node "<< getParentModule()->getName() << endl;
   // EV << "Control hops: " << controlHops << endl; // too much in no simulation mode
   //EV << "Data packets: " << dataCounter << " drop packets: " << dropCounter << " Total (Control+Data): "<< totalCounter << endl;
+  emit(controlHopsSignal, controlHops);
+  emit(overheadCostSignal, controlHops2 + controlHops);
   if ((myAddress ==7)|| (myAddress==2)) { // hostX or Kle dest addresses
       EV << getParentModule()->getName() << " Address: "<< myAddress <<" Simulation time: " << simTime()<< " Delay: "<< datarate <<"s" <<" jitter: " << jit << "ms"<< endl;
       EV << "Control packets: (nb (redundant), fa, ba) : " << nbCounter  << " (" << redundant << "), " << faCounter << ", " << baCounter << endl;
@@ -3947,6 +3955,7 @@ void AntNet::finish()
       EV << "Average hops: " << avgHops << endl;
       EV << "Minimum hops: "<< minHops << endl;
       EV << "Control hops: " << controlHops << " ; control hops2:"<< controlHops+controlHops2 <<endl;
+      emit(hitRatioSignal, double (hitCounter)/ double(numData));
       if (mySort->longValue() == 1) // static routing
           EV << "Static routing Conditions: numNodes:"<< numNodes->longValue() << " max hops rate:" << maxHopsRate->doubleValue() << " maxHops:"<< maxHops << " sort:" << mySort->operator int() << endl;
           else {

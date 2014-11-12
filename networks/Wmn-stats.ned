@@ -70,7 +70,7 @@ network WmnStats
                 port[5];
         }
         ap2: Terminal {
-            @display("i=device/accesspoint");
+            @display("i=device/accesspoint;p=350,242");
             @display("p= 370,240;r=60,,#707070");
             address = 3;
 
@@ -137,14 +137,14 @@ network WmnStats
         //            gates:
         //                port[4];
         //        }
-//        hostX2: Terminal {
-//            // mobile terminal
-//            @display("i=/device/cellphone;p=469,322;r=60,,#707070");
-//            @display("i=device/cellphone");
-//            address = 7;
-//            gates:
-//                port[4];
-//        }
+    //        hostX2: Terminal {
+    //            // mobile terminal
+    //            @display("i=/device/cellphone;p=469,322;r=60,,#707070");
+    //            @display("i=device/cellphone");
+    //            address = 7;
+    //            gates:
+    //                port[4];
+    //        }
     //        hostX3: Terminal {
     //            // mobile terminal
     //            @display("i=/device/cellphone;p=462,329;r=60,,#707070");
