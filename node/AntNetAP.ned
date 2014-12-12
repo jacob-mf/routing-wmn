@@ -38,6 +38,7 @@ simple AntNetAP
         double maxHopsRate= default(1.75); // Maximum Hops Rate
         int maxArray = default(49); // define max array size in packets for Transient nodes field
         bool flooding= default(true); // selects flooding or not
+        bool symmetricRouting=default(false); // select if symmetric routes are on
         bool rTableInit=default(true); // define if Routing table initialization is performed
         bool evaporation=default(true); //define evaporation in routing table values
         bool goodDiffusion = default(true); // Define if use good diffusion (of best estimation hops) , default true
@@ -54,6 +55,8 @@ simple AntNetAP
         double hopTime @unit (s) = default(0.020s); // hop time estimation, default 20ms
         int maxLocalRepairFlooding = default(3) ; // max flooding forwarding in local repair
         double checkTime @unit (s) = default(21s); // route check time (launch proactive BA) , default 21s
+        double evapTime @unit (s) = default(9s); // time to perform evaporation if no traffic passed by the route
+        double visitTime @unit (s) = default(7s); // time until reset old visiting table values
         //int headerCost = default (1); // 1: minimal cost, 2: add pheromone diffusion cost
         bool proBa = default (true); // active Proactive Backward ants
         bool alternateCheck = default(true); // active alternate launching of proactive BA from destination and source 
@@ -69,8 +72,8 @@ simple AntNetAP
 		@signal[overheadCost] (type="long");
 		@signal[hitRatio] (type="double");
 
-		@statistic[controlHops](title="hop count of control packets, except pheromone diffusion packets";interpolationmode=none;record=vector?,mean,max);
-		@statistic[overheadCost](title="hop count of control packets, define a new way of overhead cost";interpolationmode=none;record=vector?,mean,max);
+		@statistic[controlHops](title="hop count of control packets, except pheromone diffusion packets";interpolationmode=none;record=vector?,mean,max,sum);
+		@statistic[overheadCost](title="hop count of control packets, define a new way of overhead cost";interpolationmode=none;record=vector?,mean,max,sum);
 		@statistic[hitRatio](title="Hit ratio of successful arrived data packets";unit=s;record=vector,mean,max;interpolationmode=none);        
         @statistic[drop](title="dropped packet byte length";unit=bytes;record=vector?,count,sum;interpolationmode=none);
         @statistic[outputIf](title="output interface for each routed packet";record=histogram;interpolationmode=none);

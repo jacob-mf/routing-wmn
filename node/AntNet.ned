@@ -37,6 +37,7 @@ simple AntNet
         int maxArray = default(49); // define max array size in packets for Transient nodes field
         bool rTableInit= default(true); // define if Routing table initialization is performed
         bool mobile=default(false); // define if node X moves on the Wmn_base scenario
+        bool symmetricRouting=default(false); // select if symmetric routes are on
         bool stochastic=default(true); // Define if follow stochastic formula
         bool evaporation=default(true); //define evaporation in routing table values
         bool antsToApp=default(true); // choose if ants packets go to Application level
@@ -57,6 +58,8 @@ simple AntNet
         											// (default average 1 hop travel time)
         double hopTime @unit (s) = default(0.020s); // hop time estimation, default 20ms
         double checkTime @unit (s) = default(21s); // route check time (launch proactive BA) , default 21s
+        double evapTime @unit (s) = default(9s); // time to prform evaporation if no traffic passed by the route
+        double visitTime @unit (s) = default(7s); // time until reset old visiting table values
         int maxLocalRepairFlooding = default(3) ; // max flooding forwarding in local repair
         int cutRange = default (1); // specify cut conditions for FA, 0 : always, 1 : if worst or equal, 2: only if worst 
                     				// relative to hops estimation
@@ -72,8 +75,8 @@ simple AntNet
         @signal[overheadCost] (type="long");
 		@signal[hitRatio] (type="double");
 
-		@statistic[controlHops](title="hop count of control packets, except pheromone diffusion packets";interpolationmode=none;record=vector?,mean,max);
-		@statistic[overheadCost](title="hop count of control packets, define a new way of overhead cost";interpolationmode=none;record=vector?,mean,max);
+		@statistic[controlHops](title="hop count of control packets, except pheromone diffusion packets";interpolationmode=none;record=vector?,mean,max,sum);
+		@statistic[overheadCost](title="hop count of control packets, define a new way of overhead cost";interpolationmode=none;record=vector?,mean,max,sum);
 		@statistic[hitRatio](title="Hit ratio of successful arrived data packets";unit=s;record=vector,mean,max;interpolationmode=none); 
         @statistic[drop](title="dropped packet byte length";unit=bytes;record=vector?,count,sum;interpolationmode=none);
         @statistic[outputIf](title="output interface for each routed packet";record=histogram;interpolationmode=none);

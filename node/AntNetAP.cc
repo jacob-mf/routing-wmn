@@ -18,6 +18,9 @@
 #include <fstream>
 //#include "INETDefs.h"
 #include <string.h>
+
+#define SimTimeLimit 120 // define simulation time ending for check (BA Proactive launch)
+
 /**
  * Demonstrates static routing, utilising the cTopology class.
  * Also introduces AntWMNet and CPANT routing protocols
@@ -60,6 +63,9 @@ class AntNetAP : public cSimpleModule
                     // relative to hops estimation
     cPar *cutRangePro; // specify cut conditions for local repair, proactive FA, 0 : always, 1 : if worst or equal
                             // 2: if worst ; relative to hops estimation
+    cPar *symmetricRouting; // select symmetric routing estimation on
+    cPar *evapTime; // time to perform evaporation if no traffic passed by the route
+    cPar *visitTime; // time until reset old visiting table values
 
     // Module vectors
     std::vector<int> destAddresses; // destination addresses list
@@ -92,16 +98,22 @@ class AntNetAP : public cSimpleModule
     int visitor; // FA packets visitor counter to handle Visiting table
     double checkingTime; // store checkTime (alternate or not)
 
+    // Protocol Structs
+    typedef struct Visitor { // cell for visiting table
+            long int id;
+            double timestamp;
+        };
     // Protocol Tables
     typedef std::map<int,int> RoutingTable; // destination address -> gate index (-1 apply for unknown path, recently error)
                                         // or gate index  -> number of hops to destination (as part of RHtable for AntWMNet)
 
     RoutingTable rtable; // Routing table for static and AODV protocols
     RoutingTable ntable; // Neighbours table; gate index -> neighbour address for AODV and AntWMNet
+
     typedef std::map<int,double> ProbTable; // gate index (or hops) -> probability (timeCost)
     typedef std::map<int,ProbTable> RPtable; // destination address -> probability table of gateOutIndex
     typedef std::map<int,RoutingTable> RHtable; // destination address -> number hops from gate index
-    typedef std::map<int,long int> VisitingTable; // position visitor -> FA id visitor
+    typedef std::map<int,Visitor> VisitingTable; // position visitor -> FA id visitor
     typedef std::map<int,ProbTable> AuxTable; // gate -> hops & last cost time stored
     typedef std::map<int,AuxTable> RTtable; // destination address -> gate -> hops -> last cost time stored
 
@@ -109,6 +121,7 @@ class AntNetAP : public cSimpleModule
     RPtable ptable; // routing probability table
     VisitingTable vtable; // visitors table
     RHtable htable; // neighbours table
+    RPtable etable; // evaporation time check table, store time per every pheromon value
 
     // Self Messages
     cMessage *updateVT,*generateRREQ; // update Visiting table and begin of RREQ process //*replyTimer; // * move1, *move2,
@@ -190,6 +203,11 @@ class AntNetAP : public cSimpleModule
                                 // delete choices across origin port
     int positiveGoodPhChoices(int dest,unsigned int origin,cMessage * msg); // number of good positive pheromone choices
                              // skipping origin and gates to previous visited nodes
+    void updateTTable(int dest, unsigned int outgate, int hops, double time); // update last time cost table (AntWMNet)
+    void updateETable(int dest, unsigned int outgate); // update evaporation check time table (AntWMNet)
+    bool isNeighbour(int n); // check if node n is neighbouur of current node
+    void evaporationProc(int dest, int gate); //  Pre: evaporation is on; perform evaporation procedure
+
   public:
       AntNetAP();
       virtual ~AntNetAP();
@@ -247,6 +265,9 @@ void AntNetAP::initialize()
     updateVTime=&par("updateVTime");
     cutRange = & par ("cutRange");
     cutRangePro = & par ("cutRangePro");
+    evapTime = & par("evapTime");
+    visitTime = & par("visitTime");
+    symmetricRouting = & par("symmetricRouting");
 
     dropSignal = registerSignal("drop");
     outputIfSignal = registerSignal("outputIf");
@@ -373,6 +394,11 @@ void AntNetAP::initialize()
                     EV << "Not connected outside, source node: " << getParentModule()->getName() << endl;
                     //continue; // not connected, not in loop
                             }
+        if (visitTime->doubleValue() > 0) { // visiting table checking active
+            cMessage * visitMsg = new cMessage("Visiting table checking");
+            visitMsg->setKind(7);
+            scheduleAt(simTime() + 1 +visitTime->doubleValue(), visitMsg);
+        }
         if ((myAddress == 2) ||  (myAddress == 8) || (myAddress ==11)) { //if node Kli or other source nodes
                             if  (mySort->longValue() == 4) { // AODV branch
                                 generateRREQ = new cMessage("firstRREQ");
@@ -501,7 +527,8 @@ bool AntNetAP::checkPreviousVisit(int source, int hops,unsigned int origin, long
     if (flooding->boolValue()){ // needs active flooding
        if ((visitor == 0) || (! wasHereBefore(treeid))) // beware, so only with one visit destroy FA packets
        {
-          vtable[visitor] = treeid;
+          vtable[visitor].id = treeid;
+          vtable[visitor].timestamp = simTime().dbl();
         //  EV << "Visiting table updated, position: "<< visitor << " FA id: " << vtable[visitor] << endl;
           visitor++;
           if (isBetterHopsEstimation(source,origin,hops) ) // only if better (or not info) estimated hops than previous
@@ -555,6 +582,12 @@ void AntNetAP::dataReport(cMessage *msg) // specific used for Wmn-Base network, 
         myfile.close();
       }
       else { EV << "Unable to open file" << endl; }
+}
+
+void AntNetAP::evaporationProc(int dest, int gate) //Pre: evaporation is on
+{ // evaporation procedure
+    ptable [dest] [gate] = ptable [dest] [gate] * coefPh->doubleValue();
+    EV << "Evaporation happened! now probability routing table value is: "<< ptable [dest] [gate] << endl;
 }
 
 void AntNetAP::forwardDataPacketByRPTable(cMessage * msg) // AntWMNet data forwarding process
@@ -800,6 +833,17 @@ bool AntNetAP::isInPath(cMessage *msg, int g)
                                 }
                     }
     return enc;
+}
+
+bool AntNetAP::isNeighbour(int n)
+{ // check if node n is neighbour of current node
+    int maxGates = getParentModule()->gateSize("port");
+    for (int i=0; i< maxGates;i++){
+         if (ntable[i] == n) { // neighbour detected
+             return true;
+         }
+    }
+   return false;
 }
 
 bool AntNetAP::isShortestPath(int dest, int hops) // with hops metrics save packet with shortest path
@@ -1779,6 +1823,21 @@ void AntNetAP::tryLocalRepair(cMessage * msg, bool & comeback) // Pre: Data pack
        }
 }
 
+void AntNetAP::updateETable(int dest, unsigned int outgate)
+{
+    etable [dest] [outgate] = simTime().dbl(); // update evaporation check time table
+    if (!isNeighbour(dest)) {   // check only if are not neighbours
+        cMessage * evap = new cMessage("evaporation check");
+        evap->setKind(outgate); // set kind as the outgate to check
+        cMsgPar * d = new cMsgPar("dest");
+        d->setLongValue(dest);
+        d->setName("dest");
+        evap->addPar(d);
+        EV << "Sending evaporation check message, about dest: " << dest << " gate: "<< outgate << " value: "<< etable [dest] [outgate]<< endl;
+        scheduleAt(simTime() + evapTime->doubleValue(), evap);
+    }
+}
+
 void AntNetAP::updateHTable(int dest,unsigned int outgate, int hops)
 { // update hops estimation routing table to dest, from outgate with hops value
     if (htable[dest] [outgate] != hops) {
@@ -1837,17 +1896,18 @@ void AntNetAP::updateRPTable (int dest,unsigned int outgate, double cost,int hop
            return;
        }
     //double c = cost.dbl(); // use if simtime_t parameter
-    unsigned int maxChoices = getParentModule()->gateSize("port");
-    // evaporation in other values
+   // unsigned int maxChoices = getParentModule()->gateSize("port");
+    // evaporation in other values (old way)
   if (evaporation->boolValue() ) {
-      //EV << "evaporation is the problem" << endl;
-    for (unsigned int j=0; j< maxChoices;j++){ // use port out size, previous error use ntable size
-        if ((j != outgate)&& (ptable [dest][j]!= 0 ) ) {
-            ptable [dest] [j] = ptable [dest] [j] * coefPh->doubleValue();
-            EV << "Pheromone Table evaporates to value: "<< ptable [dest] [j] << " Dest: " << dest << " Gate "<< j << " Hops "<< hops << " Cost: "<< cost << endl;
-        }
+      updateETable(dest,outgate);
+      //      //EV << "evaporation is the problem" << endl;
+//    for (unsigned int j=0; j< maxChoices;j++){ // use port out size, previous error use ntable size
+//        if ((j != outgate)&& (ptable [dest][j]!= 0 ) ) {
+//            ptable [dest] [j] = ptable [dest] [j] * coefPh->doubleValue();
+//            EV << "Pheromone Table evaporates to value: "<< ptable [dest] [j] << " Dest: " << dest << " Gate "<< j << " Hops "<< hops << " Cost: "<< cost << endl;
+//        }
     }
-  }
+//  }
     if (metrics->longValue() ==1) // Travel time
     ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + ((1/(cost * 1000) )* (1 - coefPh->doubleValue())); // use cost as Travel time; added 10^-3 to normalize (unitary)
     else if (metrics->longValue() == 2) // Hops
@@ -1861,12 +1921,18 @@ void AntNetAP::updateRPTable (int dest,unsigned int outgate, double cost,int hop
            }
         EV << "Pheromone Table Updated to value: "<< ptable [dest] [outgate] << " Dest: " << dest << " Gate "<< outgate << " Hops "<< hops << " Cost: "<< cost << endl;
     ttable [dest] [outgate] [hops] = cost; // update cost time table
+    etable [dest] [outgate] = simTime().dbl(); // update evaporation check time table
+}
+
+void AntNetAP::updateTTable(int dest, unsigned int outgate, int hops, double time)
+{
+    ttable [dest] [outgate] [hops] = time; // update last time cost table
 }
 
 bool AntNetAP::wasHereBefore(long int id) // check if same occurrence of FA packet passed by before
 {
     for (int i=0; i< visitor; i++){
-        if (vtable[i] == id) return true;
+        if (vtable[i].id == id) return true;
     }
     return false;
 }
@@ -1875,6 +1941,39 @@ bool AntNetAP::wasHereBefore(long int id) // check if same occurrence of FA pack
 void AntNetAP::handleMessage(cMessage *msg)
 {
     if (msg->isSelfMessage()) {
+        if (msg->hasPar("dest")) { // evaporation message
+            EV << "Evaporation check, dest: "<< msg->par("dest").longValue() << " gate: " << msg->getKind() << endl;
+            if (etable [msg->par("dest").longValue()] [msg->getKind()] > (simTime().dbl() - evapTime->doubleValue())) {
+               EV << "Pheromone evaporation is not performed" << endl;
+            } else {
+                 EV << "Pheromone evaporation is coming up..." << endl;
+                 evaporationProc(msg->par("dest").longValue(),msg->getKind());//evaporation procedure
+                   }
+            if ((simTime().dbl() + evapTime->doubleValue()) > SimTimeLimit) {
+                delete msg; // no time to resent check message
+                return;
+            } else {
+                 EV << "Next evaporation check will be in "<<  evapTime->doubleValue() << " seconds" << endl;
+                 scheduleAt(simTime().dbl() + evapTime->doubleValue(), msg);
+                 return;
+             }
+
+        }
+        if (msg->getKind() == 7) { // visiting check message
+            if ((vtable [visitor-1].timestamp + visitTime->doubleValue()) < simTime().dbl() && (visitor > 0)) {
+                EV << "Visiting table is out to date. Reseting entries. Last entry on "<< vtable [visitor-1].timestamp << " visiting check time: "<< visitTime->doubleValue()<< " visitors: "<< visitor << endl;
+                visitor = 0;
+            } else EV << "Visiting table was used recently or has no visitor. Last entry (if exists and was deleted before) on "<< vtable [visitor].timestamp << " visiting check time: "<< visitTime->doubleValue()<< " visitors: "<< visitor << endl;
+            if (visitor > 0) EV << "Visiting table was used recently. Last entry was on: "<< vtable [visitor-1].timestamp <<endl;
+            if ((simTime().dbl() + visitTime->doubleValue())+1 > SimTimeLimit) {
+               delete msg; // no time to resent check message
+               return;
+            } else {
+                 EV << "Next visiting table check will be in "<<  1+ visitTime->doubleValue() << " seconds" << endl;
+                 scheduleAt(simTime().dbl() + 1 + visitTime->doubleValue(), msg);
+                 return;
+             }
+        }
         if (msg->getKind() == 6) { // data packet stored waiting local repairing
             EV << "Checking if local repairing find out a path " << endl;
             Packet *pk = check_and_cast<Packet *>(msg);
@@ -1960,8 +2059,9 @@ void AntNetAP::handleMessage(cMessage *msg)
 //                                    }
 //                                }
         if (msg == updateVT){
-                          vtable[visitor] = msg->getKind(); //possible better with long int par treeId
-                          EV << "Updated  visiting table, position: "<< visitor << " FA id(kind): " << vtable[visitor] << " par treeId:"<< msg->par("treeId").longValue() << endl;
+                          vtable[visitor].id = msg->getKind(); //possible better with long int par treeId
+                          vtable[visitor].timestamp = simTime().dbl();
+                          EV << "Updated  visiting table, position: "<< visitor << " FA id(kind): " << vtable[visitor].id << " par treeId:"<< msg->par("treeId").longValue() << endl;
                           visitor++;
                                       }
         if (msg->getKind() == 8) { // checking message to launch BA proactive in destination address
@@ -2046,7 +2146,8 @@ void AntNetAP::handleMessage(cMessage *msg)
                    int bestHops = pk->getHopCount(); int dest= pk->getDestAddr();
                    if ((visitor == 0) || (! wasHereBefore(pk->getTreeId())))
                    {
-                       vtable[visitor] = pk->getTreeId();
+                       vtable[visitor].id = pk->getTreeId();
+                       vtable[visitor].timestamp = simTime().dbl();
                        //EV << "Updated  visiting table, position: "<< visitor << " PhDiff id: " << vtable[visitor] << endl;
                        visitor++;
                        //updateHTable(pk->getSrcAddr(),origin,hops);
@@ -2256,8 +2357,9 @@ void AntNetAP::handleMessage(cMessage *msg)
                            // beware, so only with one visit destroy FA packets
                            {
                            if (updateVTime->doubleValue() == 0) { // no need to send message if there is no delay
-                               vtable[visitor] = pk->getTreeId();
-                               EV << "Updated  visiting table, position: "<< visitor << " RREQ id: " << vtable[visitor] << endl;
+                               vtable[visitor].id = pk->getTreeId();
+                               EV << "Updated  visiting table, position: "<< visitor << " RREQ id: " << vtable[visitor].id << endl;
+                               vtable[visitor].timestamp = simTime().dbl();
                                visitor++;
                             } else {
                                   updateVT = new cMessage("Update Visiting Table");
@@ -2716,7 +2818,8 @@ void AntNetAP::handleMessage(cMessage *msg)
                 if ((visitor == 0) || (! wasHereBefore(pk->getTreeId())))
                 {
                     if (updateVTime->doubleValue() == 0) { // no need to send message if there is no delay
-                        vtable[visitor] = pk->getTreeId(); // best option, no good value encounter
+                        vtable[visitor].id = pk->getTreeId(); // best option, no good value encounter
+                        vtable[visitor].timestamp = simTime().dbl();
                         //EV << "Updated  visiting table, position: "<< visitor << " FA id: " << vtable[visitor] << endl;
                         visitor++;
                         // could be good to store cost time here, to better calculation of symmetric pheromone
@@ -3047,6 +3150,10 @@ void AntNetAP::handleMessage(cMessage *msg)
         pk->setHopCount(pk->getHopCount()+1);
         emit(outputIfSignal, outGateIndex);
         if (pk->getKind() == 2) controlHops++; // increase control Hops counter
+        if (evaporation->boolValue() && (pk->getKind() == 0)) { // evaporation on and data packet
+            etable [pk->getDestAddr()] [outGateIndex] = simTime().dbl(); // timestamp on evaporation timestamp table
+            EV << "Save evaporation timestamp on "<< etable [pk->getDestAddr()] [outGateIndex] << endl;
+        }
         send(pk, "out", outGateIndex);
         //EV << "Control hops: " << controlHops << endl;
         return;
@@ -3187,8 +3294,9 @@ void AntNetAP::handleMessage(cMessage *msg)
                 if ((visitor == 0) || (! wasHereBefore(pk->getTreeId()))) // beware, so only with one visit destroy FA packets
                    {
                    if (updateVTime->doubleValue() == 0) { // no need to send message if there is no delay
-                       vtable[visitor] = pk->getTreeId();
-                       EV << "Updated  visiting table, position: "<< visitor << " RREQ id: " << vtable[visitor] << endl;
+                       vtable[visitor].id = pk->getTreeId();
+                       vtable[visitor].timestamp = simTime().dbl();
+                       EV << "Updated  visiting table, position: "<< visitor << " RREQ id: " << vtable[visitor].id << endl;
                        visitor++;
                        } else {
                        updateVT = new cMessage("Update Visiting Table");
