@@ -14,7 +14,7 @@
 packet Packet 
 // kind = 0 Data, 1 Hello_Msg, Pheromone diffusion, 2 Forward_Ant or RREQ, 3 Backward_Ant or RREP
 // kind = 4 Proactive Forward Ant or RERR, 5 RREQ or FA (local repair), 6 stored waiting local repair solution(self message)
-// kind = 8 Proactive Backward ant
+// kind = 8 Proactive Backward ant, kind=9 dataReply start message
 {
     string displayString = "default,kind";
     int srcAddr;

@@ -41,12 +41,17 @@ simple AntNetAP
         bool symmetricRouting=default(false); // select if symmetric routes are on
         bool rTableInit=default(true); // define if Routing table initialization is performed
         bool evaporation=default(true); //define evaporation in routing table values
+        bool dataRouting=default(false); // define if data packets can deploy routing info on tables
+        bool dataReply=default (false); // define if data reply packets are launched as response of arrived data packet
         bool goodDiffusion = default(true); // Define if use good diffusion (of best estimation hops) , default true
+        bool powerUpdate = default (false); // select power update on data and BA routing update
         volatile double sendFirstRREQ @unit(s)  = default(0.03s); // time to send first  RREQ packet in AODV 
         volatile double replyTime @unit(s)  = default(0.33s); // time to send reply timer to check RREP packet received 
         												    // in AODV 
+        
         bool take1stPath=default(true); // take 1st path(neighbour on sight)  to destination
         bool localRepair=default(false); // select local repair on error node for AODV option
+        double dataReplyTime @unit (s) =default(0s); // data reply waiting time
         double updateVTime @unit(ms) =default(0ms); // time until update Visiting Table 
         											// (default average 1 hop travel time)
         volatile double sendIaTime @unit(s) = default(exponential(1s)); // time between generating packets,

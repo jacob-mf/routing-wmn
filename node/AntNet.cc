@@ -66,7 +66,11 @@ class AntNet : public cSimpleModule
                           // less control hops (overhead cost) ; default true
     //cPar *headerCost; // 1: minimal cost, 2: add pheromone diffusion cost, bad idea, better show  both cost
     cPar *evapTime; // time to perform evaporation if no traffic passed by the route
+    cPar *dataReply; // enable data reply packets
+    cPar *dataReplyTime; // define elapsed time until launching data reply packet
+    cPar *dataRouting; // select data routing option
     cPar *visitTime; // time until reset old visiting table values
+    cPar *powerUpdate; // select power update on data and BA routing update
 
     // vectors
     std::vector<int> destAddresses; // list of destination addresses (usually mesh nodes)
@@ -90,15 +94,16 @@ class AntNet : public cSimpleModule
     int dropCounter; // data drop packets counter
     int hitCounter; // arrived right destination data packets counter
     int repairCounter; // local repair packets
+    long pkReplyCounter; // data reply packets counter
     bool waitingReply; // flag to indicate waiting Reply timer state (avoid send multiple) on AODV
     double avgTravel,avgTime1hop,avgHops; // Hit data packets travel time average, hops average
     double checkingTime; // store checkTime (alternate or not)
     int totalCounter,proactiveCounter,minHops;// total packets counter, proactive FA counter, minimum hops possible
         // (for standard numNodes in Base & Kli Kle configurations)
     int visitor; // FA packets visitor counter to handle Visiting table (terrible error when forgetting to initialise)
-
+    double totalTime; // store last good travel time
     // Local struct
-    typedef struct Visitor { // cell for the Visiting table
+    struct Visitor { // cell for the Visiting table
             long int id;
             double timestamp;
         };
@@ -135,6 +140,7 @@ class AntNet : public cSimpleModule
     simsignal_t hitRatioSignal;
 
     // Local functions
+    void beginDataReply(int dest, int gate); // start data  reply process to destination dest
     int bestHopsEstimation(int dest); // return best hops estimation to destination node
     int bestHopsEstimationChoices(RoutingTable & choices ,int dest,cMessage *msg);
                              // return number of gates with best hops estimation to destination and these gates in a vector
@@ -294,6 +300,10 @@ void AntNet::initialize()
     evapTime = & par("evapTime");
     visitTime = & par("visitTime");
     symmetricRouting = & par("symmetricRouting");
+    dataReply = & par ("dataReply");
+    dataReplyTime= & par ("dataReplyTime");
+    dataRouting= & par ("dataRouting");
+    powerUpdate = & par ("powerUpdate");
 
     // signals
     dropSignal = registerSignal("drop");
@@ -307,7 +317,7 @@ void AntNet::initialize()
     baCounter=0;faCounter=0;avgTime1hop=0;avgHops=0;minHops=0;controlHops=0;rerrCounter=0;rrepCounter=0;
     nbCounter=0;totalCounter=0; dropCounter=0;dataCounter=0;hitCounter=0;avgTravel=0;rreqCounter=0;
     waitingReply= false;controlHops2=0;proBaCounter= 0;costSrc=0;costDest=0;
-    visitor=0;checkingTime = 0;
+    visitor=0;checkingTime = 0;pkReplyCounter=0;
     if (numNodes->longValue()==2) minHops=1;
     if (numNodes->operator int()==9) minHops=4;
     if (numNodes->longValue()==99) minHops=19; // 9 (Width-1) + 6 (height-3) +4 (base)
@@ -455,7 +465,11 @@ void AntNet::initialize()
     while ((token = tokenizer.nextToken())!=NULL)
           destAddresses.push_back(atoi(token));
 
-    int j = getParentModule()->gateSize("port"); // network neighbours searching
+    if (srcAddresses.size() > 1) numData = numData * srcAddresses.size(); // estimation of data packets if more source nodes
+    if (dataReply->boolValue()) numData= (numData * 2) -((1*srcAddresses.size())); // - 1);
+   numData = numData * destAddresses.size();
+   EV << "Data packets to launch on network: "<< numData << endl;
+   int j = getParentModule()->gateSize("port"); // network neighbours searching
     int numDest =0;
     int gateDest[7]; // Initialise array
     for (int k=0; k<7;k++)
@@ -476,7 +490,7 @@ void AntNet::initialize()
        for (int k=0; k<numDest;k++ ) {
            for (unsigned int n=0; n< destAddresses.size(); n++ ) {
                if (rTableInit->boolValue())   //
-               {   ptable[ destAddresses[n]] [gateDest[k]] = 1.0 / (numDest) ; // update destination addresses
+               {   ptable[ destAddresses[n]] [gateDest[k]] = temp ; // update destination addresses
                    htable[destAddresses[n]] [gateDest[k]]=0; //initialise to 0 the routing hops table
                }
                else {ptable[ destAddresses[n]] [gateDest[k]] = 0  ; // initialise to 0 routing table addresses
@@ -565,6 +579,23 @@ void AntNet::initialize()
 
     }
     //delete topo;
+}
+
+void AntNet::beginDataReply(int dest, int gate) // start data  reply process to destination dest
+{
+    char pkname[40];
+    sprintf(pkname,"pkReply-%d-to-%d-#%ld", myAddress, dest, pkReplyCounter++);
+    Packet *pk = new Packet(pkname); // kind default 0 ?
+    pk->setByteLength(1024);
+    pk->setSrcAddr(myAddress);
+    pk->setDestAddr(dest);
+    pk->setTransientNodesArraySize(maxArray->longValue()); // initialise to safe value
+    // beware high values(100<) cause critical memory errors
+    EV << "generating packet " << pkname << endl;
+    //numSent++;numData++;
+    EV << "Forwarding " << pkname << " on gate "<< gate << endl;
+    emit(outputIfSignal,gate);
+    send(pk,"out",gate);
 }
 
 int AntNet::bestHopsEstimation(int dest) // return best hops estimation to destination node
@@ -677,8 +708,8 @@ bool AntNet::checkPreviousVisit(int source, int hops,unsigned int origin, long t
           //EV << "Updated  visiting table, position: "<< visitor << " FA id: " << vtable[visitor] << endl;
           visitor++;
           if (isBetterHopsEstimation(source,origin,hops))
-              // good idea save here time to use then by BA as cost time to source (need TravelTime in process)
-              updateHTable(source,origin,hops); // update hops table, as its first packet to enter node
+          { // good idea save here time to use then by BA as cost time to source (need TravelTime in process)
+              updateHTable(source,origin,hops);} // update hops table, as its first packet to enter node
        } else {
            if (cutRangePro->longValue() == 0){ // cut always, even if shortest path
                if (isBetterHopsEstimation(source,origin,hops))
@@ -692,7 +723,8 @@ bool AntNet::checkPreviousVisit(int source, int hops,unsigned int origin, long t
                   if ((cutRangePro->longValue() == 1) && isEqualPath(source,hops) ) {
                       EV << "FA id: " <<  treeid << " already checked here by other packet, but by equal path (in hops), so discarding Proactive FA packet"  << endl;
                       if (isBetterHopsEstimation(source,origin,hops)) // looks no necessary
-                          updateHTable(source,origin,hops);
+                      {  updateHTable(source,origin,hops);
+                      }
                       return true;
                   }
                    updateHTable(source,origin,hops);
@@ -1056,7 +1088,7 @@ void AntNet::moveNode(int pos)
 { // simulate movement on node X cell phone by different phases
     //int j = getParentModule()->gateSize("port");
     double dr= 8000000;double ruido =2;
-    double jit=uniform(0,7) ;double retraso= (2+jit)/1000; int ypos=58;
+    double jit=uniform(0,7) ;double retraso= (2+jit)/1000; //int ypos=58;
     switch (pos) {
     case 1: break;
     case 2: move3 = new cMessage("Move 3"); //29s
@@ -1066,7 +1098,7 @@ void AntNet::moveNode(int pos)
             // draw Kli below (further from Kle)
             break;
     case 3: move4 = new cMessage("Move 4");  // 44s
-            scheduleAt(49,move4);jit = uniform(0,9);retraso=(3+jit)/1000;dr=2000000;ypos=38 ;ruido=3.7;
+            scheduleAt(49,move4);jit = uniform(0,9);retraso=(3+jit)/1000;dr=2000000;ruido=3.7;//ypos=38 ;
             changeChannelParamsByGate(3,dr,retraso,jit,ruido); // now AP2 is visible (neighbour of node X, around 49m)
             jit= uniform(0,7);
             changeChannelParamsByGate(0,12000000,(jit+2)/1000,jit,3); // node C is further from nodo X (25m)
@@ -1079,7 +1111,7 @@ void AntNet::moveNode(int pos)
 //            }
             //getParentModule()->setDisplayString("i=device/wifilaptop;p=266,38;r=60,,#707070"); // draw Kli below (further from Kle)
             break;
-    case 4: jit=uniform(0,8);retraso=(3+jit)/1000;dr=6000000;ypos=28;ruido=3.4; // on 49 s simulation
+    case 4: jit=uniform(0,8);retraso=(3+jit)/1000;dr=6000000;ruido=3.4; // on 49 s simulation ypos=28;
             changeChannelParamsByGate(3,dr,retraso,jit,ruido);   // node X is closer to AP2 (44m)
             jit=uniform(0,7);
             move5 = new cMessage("Move 5");
@@ -2256,7 +2288,9 @@ void AntNet::updateRoutingInfoOnGateError(int gate) // Pre: Gate error, node out
 
 void AntNet::updateRPTable (int dest,unsigned int outgate, double cost,int hops )
 { // Update Routing Pheromone Table in [dest, outgate] position
-   if ( (cost == 0) && (hops==0)) { // signal to reset value, to avoid div zero  errors
+    if (cost < 0) // possible after proactveFA
+            cost = hopTime->doubleValue(); // assign good time, 1hop
+    if ( (cost == 0) && (hops==0)) { // signal to reset value, to avoid div zero  errors
        ptable [dest] [outgate] = 0;
        ttable [dest] [outgate] [hops] = 0;
        EV << "Pheromone Table resets to 0 values: "<< ptable [dest] [outgate] << " Dest: " << dest << " Gate "<< outgate << " Hops "<< hops << " Cost: "<< cost << endl;
@@ -2277,6 +2311,12 @@ void AntNet::updateRPTable (int dest,unsigned int outgate, double cost,int hops 
 //        }
 //    }
     }
+    if (powerUpdate->boolValue()) { // makes decrease pheromon if time increasing (when worse time)
+        if (cost > getLastTime(dest, outgate, hops)){
+            ptable [dest] [outgate] = 0 ; // reset first if time is worse than previous
+            EV << "Power routing update on"<< endl;
+        }
+    }
     if (metrics->longValue() ==1) // Travel time
     ptable [dest] [outgate] = ptable [dest] [outgate] * coefPh->doubleValue() + ((1/(cost * 1000) )* (1 - coefPh->doubleValue())); // use cost as Travel time; added 10â�»^3 to normalize (unitary)
     else if (metrics->longValue() == 2) // Hops
@@ -2288,14 +2328,20 @@ void AntNet::updateRPTable (int dest,unsigned int outgate, double cost,int hops 
         // if value greater than 1 (typical for 1 hops re-update) just recalculate value
         if (ptable [dest] [outgate] > 1)  ptable [dest] [outgate] =  0.5*( (((1/(hops) )* (1 - coefPh->doubleValue())) + ((1/(cost * 1000) )* (1 - coefPh->doubleValue()))));
     }
-    ttable [dest] [outgate] [hops] = cost;
-    EV << "Pheromone Table Updated to value: "<< ptable [dest] [outgate] << " Dest: " << dest << " Gate "<< outgate << " Hops "<< hops << " Cost: " << cost << " Ttable:" << ttable [dest] [outgate] [hops]<< endl;
-
+    double old =0;
+    if (cost != MAXTIME.dbl()){
+        old = ttable [dest] [outgate] [hops];
+        ttable [dest] [outgate] [hops] = cost;
+    }
+    EV << "Pheromone Table Updated to value: "<< ptable [dest] [outgate] << " Dest: " << dest << " Gate "<< outgate << " Hops "<< hops << " Cost: " << cost << " Old TTable:" << old << endl;
+    //updateTTable(dest, outgate,hops,cost);
 }
 
 void AntNet::updateTTable(int dest, unsigned int outgate, int hops, double time)
 {
     ttable [dest] [outgate] [hops] = time; // update last cost time table
+    EV << "Last time (for symmetric way) Table Updated to value: "<< ttable [dest] [outgate] [hops] << " Dest: " << dest << " Gate "<< outgate << " Hops "<< hops << " Time: " << time << endl;
+
 }
 
 bool AntNet::wasHereBefore(long int id)
@@ -2413,6 +2459,12 @@ void AntNet::handleMessage(cMessage *msg)
                             }
             }
 
+        }
+        if (msg->getKind() == 9) { // dataReply start message
+            Packet *pk = check_and_cast<Packet *>(msg);
+            beginDataReply(pk->getSrcAddr(), msg->par("origin"));
+            delete msg;
+            return;
         }
 //        if (msg == replyTimer) { // AODV reply timer reached
 //            //msg
@@ -2823,8 +2875,10 @@ void AntNet::handleMessage(cMessage *msg)
     if (destAddr == myAddress)   // packet arrived desired destination
     {
         EV << "local delivery of packet " << pk->getName() << endl;
-        pk->setTravelTime(pk->getArrivalTime() - pk->getCreationTime());
-        EV << "In (time calculated in Routing) : " << pk->getTravelTime() << " ,hops: "<< pk->getHopCount() << endl;
+        totalTime = pk->getArrivalTime().dbl() - pk->getCreationTime().dbl();
+        if (pk->getKind() != 3 ) // No update TravelTime on BA packet ?? not sure if its needed
+            pk->setTravelTime(totalTime);
+        EV << "In (time calculated in Routing) : " << totalTime << " ,hops: "<< pk->getHopCount() << endl;
         //showChannelParams(); // debug Channel parameters changes
         //EV << "Inside arrival branch, before send LocalOut" << endl;
         unsigned int originGateId = pk->getArrivalGateId();
@@ -2836,8 +2890,23 @@ void AntNet::handleMessage(cMessage *msg)
         if (pk->getKind() == 0) { // Data packet arrives
             dataCounter++;
             hitCounter++;
-            avgTravel = avgTravel +  pk->getTravelTime().dbl();
+            avgTravel = avgTravel +  totalTime;
             avgHops = avgHops + pk->getHopCount();
+            if (dataReply->boolValue() && (isDestAddress(myAddress))) { // only happens in destination nodes
+                unsigned int origin = gate(originGateId)->getIndex();
+                if (dataReplyTime->doubleValue() == 0)
+                beginDataReply(pk->getSrcAddr(), origin);
+                else {
+                   cMessage* replyData = pk->dup();
+                   replyData->setKind(9);
+                   cMsgPar * gate = new cMsgPar("origin");
+                   gate->setLongValue(origin);
+                   gate->setName("origin");
+                   replyData->addPar(gate);
+                   EV << "Launching data reply packet in "<< dataReplyTime->doubleValue() << " seconds"<< endl;
+                   scheduleAt(simTime() + dataReplyTime->doubleValue(), replyData);
+                }
+            }
             send(pk, "localOut");
             return;
             //dataReport(pk); // checking results process
@@ -2965,7 +3034,7 @@ void AntNet::handleMessage(cMessage *msg)
                 int k = pk->getHopCount();
                 ba->setTransientNodesArraySize(k); // initialise to safe value, store hops count
                 ba->setHopCount(0);
-                ba->setTravelTime(pk->getTravelTime());
+                ba->setTravelTime(pk->getArrivalTime()-pk->getCreationTime());
                 ba->setDisplayString("i=msg/ant3_s,blue"); // BA in blue
 
                 for (int i=0;i<k;i++) {
@@ -2975,7 +3044,13 @@ void AntNet::handleMessage(cMessage *msg)
 
                 //updateRPTable(destAddr,origin,pk->getTravelTime().dbl(),ba->getTransientNodesArraySize());
                 // same node, dest, not necessary
-                updateRPTable(src,origin,pk->getTravelTime().dbl(),k);
+                if (symmetricRouting->boolValue())
+                    updateRPTable(src,origin,pk->getTravelTime().dbl(),k);
+                else{
+                    //updateRPTable(src,origin,MAXTIME.dbl(),k); // save with Min value (Max time)
+                    updateRPTable(src,origin,k * hopTime->doubleValue(),k); // new method, estimation, hops * Thop
+                    updateTTable(src,origin,k,pk->getTravelTime().dbl());
+                }
                 if (htable[src][origin] > k || // update only if better or
                     (htable [src] [origin] == 0)) // or no previous estimation
                     // update routing hops table to source (here we are in dest, not need update other
@@ -3001,7 +3076,13 @@ void AntNet::handleMessage(cMessage *msg)
                 //EV << "origin : " << origin << " symmetric: " << symmetric << endl;
                 // TOCheck update routing table ,symmetric
                 //updateRPTable(destAddr,origin,simTime().dbl() - pk->getCreationTime().dbl(),pk->getTransientNodesArraySize()); // same dest and actual node, not neccessary
-                updateRPTable(src,origin,costDest,hops);
+                //updateRPTable(src,origin,costDest,hops); // symmetric way
+                if (symmetricRouting->boolValue())
+                    updateRPTable(src, origin, costDest, hops); // new accuracy method
+                else{
+                    updateRPTable(src,origin,pk->getTravelTime().dbl(),hops); // save the correct saved time
+                    //updateTTable(src,origin,hops);
+                }
                 if (hops < htable [src] [origin] || (htable [src] [origin] == 0)) // only if better or no previous estimation
                     // update routing hops table to source (here we are in dest, not need update other
                     // (could perform transitive property to transient nodes)
@@ -3011,7 +3092,7 @@ void AntNet::handleMessage(cMessage *msg)
                 emit(dropSignal, (long)pk->getByteLength());
                 EV << "BA mission completed"<< endl; // no need to update baCounter++;
                 // delete pk;
-            } else if (pk->getKind() == 8) { // Proactive BA arrived
+            } else if (pk->getKind() == 8) { // Proactive BA arrived symmetric behaviour
                 //EV << "Old values in node " << getParentModule()->getName() << " costDest:" << costDest << " costSrc:"<< costSrc << endl;
                 //showRoutingInfo();
                 //showCostTable();
@@ -3020,8 +3101,9 @@ void AntNet::handleMessage(cMessage *msg)
                 unsigned int origin = gate(originGateId)->getIndex();
                 double old = getLastTime(src, origin, hops); // better getLastTime function
                 //EV << "Old values in node " << getParentModule()->getName() << " costDest:" << costDest << " costSrc:"<< costSrc << " ttable:"<< old << endl;
-                bool better, same; double newCost = (simTime() - pk->getCreationTime()).dbl();
+                bool better; double newCost = (simTime() - pk->getCreationTime()).dbl();
                 double old2;
+                bool same;
                 if (isSrcAddress(myAddress)) {
                     old2  = costDest;
                     costDest = newCost; same = (old == old2);
@@ -3042,6 +3124,7 @@ void AntNet::handleMessage(cMessage *msg)
                         updateRPTable(src,origin,0,0); // first reset value, then update to worse value
                 }
                 updateRPTable(src,origin,newCost,hops);
+                same = same;
                 if (hops < htable [src] [origin] ||
                    (htable [src] [origin] == 0)) // only if better hops estimation or no previous info
                     updateHTable(src,origin,hops);
@@ -3073,6 +3156,7 @@ void AntNet::handleMessage(cMessage *msg)
             }
             int originGateId = pk->getArrivalGateId();
             unsigned int origin = gate(originGateId)->getIndex();
+            int src = pk->getSrcAddr();
             if (checkPreviousVisit(pk->getSrcAddr(),hops,origin,pk->getTreeId())) {
      // check if already visited and if better estimation hops (need source address, hops,origin (unsigned), treeid (long)
                 EV << "Proactive FA id: " <<  pk->getTreeId() << " already checked here by other route, discarding packet " << pk->getName() << endl;
@@ -3103,6 +3187,10 @@ void AntNet::handleMessage(cMessage *msg)
             }
             pk->setTransientNodes(pk->getHopCount() ,myAddress);
             pk->setHopCount(pk->getHopCount()+1);
+            // update ttable if no symmetric way used
+            if (!symmetricRouting->boolValue()) {
+                updateTTable(src,origin,hops,simTime().dbl() - pk->getCreationTime().dbl()); // save the time to src from this way
+            }
             if (choices > 0) {
                 //pk->setTransientNodes(pk->getHopCount() ,myAddress);
                 //pk->setHopCount(pk->getHopCount()+1);
@@ -3195,20 +3283,32 @@ void AntNet::handleMessage(cMessage *msg)
                 costDest = (simTime() - pk->getCreationTime()).dbl();
                 unsigned int origin = gate(originGateId)->getIndex();
                 //unsigned int symmetric = symmetricGate(origin);
-                double symCost = normCost(pk->getTravelTime().dbl() - costDest);
+                double symCost = normCost(pk->getTravelTime().dbl() - costDest); // old method
                 // normalise cost symmetric value estimation
                 //EV << "Origin gate id: "<< originGateId << " origin: "<< origin << " symmetric: " << symmetric << endl;
                 //updateRPTable(destAddr,baGateIndex,pk->getTravelTime().dbl(),1);
                 // not necesary if neighbour packets perform routing table update
-                updateRPTable(src, origin, costDest, hops); // update path to BA source
-                updateRPTable(dest, baGateIndex, symCost, hops2); // update path to BA destination (source node) symmetric (but use destination port no symmetric)
+
+                // update ttable if no symmetric way used
+                if (symmetricRouting->boolValue()) {
+                    updateRPTable(src, origin, costDest, hops); // update path to BA source
+                    updateRPTable(dest, baGateIndex, getLastTime(dest,baGateIndex,hops2), hops2); // update path to BA destination (source node) symmetric (but use destination port no symmetric)
+                    //    updateRPTable(dest, baGateIndex, symCost, hops2); // update path to BA destination (source node) symmetric (but use destination port no symmetric)         }
+                } else {
+                    updateRPTable(src, origin, pk->getTravelTime().dbl() - getLastTime(dest,baGateIndex,hops2), hops); // update path to BA source node)
+                    //updateRPTable(dest, baGateIndex, MAXTIME.dbl(), hops2); // update to dest with max time?
+                    updateRPTable(dest, baGateIndex, hops2 * hopTime->doubleValue(), hops2);
+                    updateTTable(dest,baGateIndex,hops2,costDest);
+                    EV << "New no symmetric routing info applied, from last time saved, both modes" << endl;
+                }
+
                 if (hops < htable [src] [origin] || (htable [src] [origin] == 0)) // better or not info at all
                     updateHTable(src, origin, hops); // symmetric
                 if (hops2 < htable [dest] [baGateIndex] || // better
                    (htable [dest] [baGateIndex] == 0))  // no previous info
                     updateHTable(dest, baGateIndex, hops2); // destination
                 costSrc = symCost; // debugging data
-                //showRoutingInfo();
+                showRoutingInfo();
                 EV << "forwarding BA packet " << pk->getName() << " on gate index " << baGateIndex << " steps left: " << pk->getTransientNodesArraySize()-pk->getHopCount() << endl;
                 //pk->setHopCount(pk->getHopCount()-1);
                 emit(outputIfSignal, baGateIndex);
@@ -3244,6 +3344,7 @@ void AntNet::handleMessage(cMessage *msg)
             bool worse; // check if worse time collected
             double old2;
             //showCostTable();
+            old2 =0;
             bool same; double old = ttable [src] [origin] [hops]; // better findLastTimeCost function
             if (htable [src] [origin] > hops || (htable [src] [origin] == 0)) // better or not info at all)
                 updateHTable(src,origin,hops); // check if same cost inside process
@@ -3267,6 +3368,7 @@ void AntNet::handleMessage(cMessage *msg)
                 //EV << "Worse time and same hops, so first reset pheromone value to place worse value on it" << endl;
                 updateRPTable(src,origin,0,0); // if worse time, first reset
             }
+            old2=old2;
             updateRPTable(src,origin,newCost,hops);
             EV << "forwarding Proactive BA packet " << pk->getName() << " on gate index " << baGateIndex << " estimated steps left: " << htable[destAddr][baGateIndex] << endl;
             pk->setTransientNodes(hops,myAddress);
@@ -3327,6 +3429,8 @@ void AntNet::handleMessage(cMessage *msg)
         int originGateId = pk->getArrivalGateId();
   //      EV << "originGateId : " << originGateId << " Id pk: " << pk->getTreeId() << endl;
         unsigned int origin = gate(originGateId)->getIndex();
+        int src = pk->getSrcAddr();
+        double travelTime = simTime().dbl() - pk->getCreationTime().dbl();
     //    EV << "origin : " << origin << endl;
         if ((pk->getKind() == 2) && (flooding->boolValue())){ // FA arrives and active flooding
             //VisitingTable::iterator itv = vtable.find(pk->getTreeId());
@@ -3338,8 +3442,12 @@ void AntNet::handleMessage(cMessage *msg)
                         vtable[visitor].timestamp = simTime().dbl();
                         //EV << "Updated  visiting table, position: "<< visitor << " FA id: " << vtable[visitor].id << endl;
                         visitor++;
-                        updateHTable(pk->getSrcAddr(),origin,k); // update hops table, as its first packet to enter node
-                        // could be good to store cost time here, to better calculation of symmetric pheromone
+                        if (k > 0) {
+                            updateHTable(src,origin,k); // update hops table, as its first packet to enter node
+                            // could be good to store cost time here, to better calculation of symmetric pheromone
+                            //updateTTable(pk->getSrcAddr(),origin,k,simTime().dbl() - pk->getCreationTime().dbl());
+                            updateTTable(src, origin, k, travelTime); // symmetric time to source
+                        }
                     } else {
                         updateVT = new cMessage("Update Visiting Table");
                         cMsgPar * vt = new cMsgPar("treeId");
@@ -3347,46 +3455,56 @@ void AntNet::handleMessage(cMessage *msg)
                         vt->setName("treeId");
                         updateVT->addPar(vt);
                         updateVT->setKind(pk->getTreeId()); // store in kind field the pk id
-                        updateHTable(pk->getSrcAddr(),origin,k);// update hops table, as its first packet to enter node
+                        if (k > 0) {
+                            updateHTable(src,origin,k);// update hops table, as its first packet to enter node
+                            updateTTable(src, origin, k, travelTime); // symmetric time to source
+                            //updateTTable(pk->getSrcAddr(),origin,k,simTime().dbl() - pk->getCreationTime().dbl());
                         // could be good to store cost time here, to better calculation of symmetric pheromone
-                        scheduleAt(simTime()+(updateVTime->doubleValue()/1000),updateVT);
+                        }
+                            scheduleAt(simTime()+(updateVTime->doubleValue()/1000),updateVT);
                         // vtable[visitor] = pk->getTreeId();
                         //EV << "Updated  visiting table, position: "<< visitor << " FA id: " << vtable[visitor] << endl;
                         //                visitor++;
                     }
                 } else {
-                    showRoutingInfo(pk->getSrcAddr());
+                    showRoutingInfo(src);
                     if  (cutRange->longValue() == 0) { // always cut
-                        if (isBetterHopsEstimation(pk->getSrcAddr(),origin,k))
-                            updateHTable(pk->getSrcAddr(),origin,k); // only if better
-                        EV << "FA id: " <<  pk->getTreeId() << " already checked here by other route, discarding packet " << pk->getName() << endl;
-                        emit(dropSignal, (long)pk->getByteLength());
-                        delete pk;
-                        return;
-                    }
+                        if (isBetterHopsEstimation(src,origin,k))
+                            updateHTable(src,origin,k); // only if better
+                            updateTTable(src, origin, k, travelTime); // symmetric time to source
+                        //updateTTable(pk->getSrcAddr(),origin,k,simTime().dbl() - pk->getCreationTime().dbl());
+                            EV << "FA id: " <<  pk->getTreeId() << " already checked here by other route, discarding packet " << pk->getName() << endl;
+                            emit(dropSignal, (long)pk->getByteLength());
+                            delete pk;
+                            return;
+                        }
                     if (metrics->longValue() > 1 ) { // if hops or hops & time metrics, update hops table if less hops
-                        EV <<"Hops table actual  value:"  << htable[pk->getSrcAddr()][origin] << " for  dest:"<< pk->getSrcAddr() << " and gate:"<< origin << " actual path hops value: "<< k << endl;
-                        if (isShortestPath(pk->getSrcAddr(),k)) { // also if equal to shortest
+                        EV <<"Hops table actual  value:"  << htable[src][origin] << " for  dest:"<< src << " and gate:"<< origin << " actual path hops value: "<< k << endl;
+                        if (isShortestPath(src,k)) { // also if equal to shortest
                         // process to check if pk take the shortest route by the moment(isShortestPath(dest,g hops))
                             //updateHTable(pk->getSrcAddr(),origin,k);
                             // could be good to store cost time here, to better calculation of symmetric pheromone
-                              if  ((cutRange->longValue() == 1) && (isEqualPath(pk->getSrcAddr(), k))) {
+                              if  ((cutRange->longValue() == 1) && (isEqualPath(src, k))) {
                                   //  cut if worst or equal
-                                        updateHTable(pk->getSrcAddr(),origin,k);
+                                        updateHTable(src,origin,k);
                                         EV << "FA id: " <<  pk->getTreeId() << " already checked here by equal route (in hops), discarding packet " << pk->getName() << endl;
                                         emit(dropSignal, (long)pk->getByteLength());
                                         delete pk;
                                         return;
-                            }
+                              }
 
-                            if (bestHopsEstimation(pk->getSrcAddr()) == k)
+                            if (bestHopsEstimation(src) == k)
                                 EV << "FA id: " <<  pk->getTreeId() << " already checked here by other packet, but by same long path (in hops), so continue with " << pk->getName() << endl;
                             else EV << "FA id: " <<  pk->getTreeId() << " already checked here by other packet, but by longest path (in hops), so continue with " << pk->getName() << endl;
-                            updateHTable(pk->getSrcAddr(),origin,k);
+                                updateHTable(src,origin,k);
+                                updateTTable(src, origin, k, travelTime); // symmetric time to source
+                                //updateTTable(pk->getSrcAddr(),origin,k,simTime().dbl()- pk->getCreationTime().dbl());
                         }
                         else {
-                            if (htable[pk->getSrcAddr()][origin] == 0) {// no previous info
-                               updateHTable(pk->getSrcAddr(),origin,k);
+                            if (htable[src][origin] == 0) {// no previous info
+                               updateHTable(src,origin,k);
+                               updateTTable(src, origin, k, travelTime); // symmetric time to source
+                               //updateTTable(pk->getSrcAddr(),origin,k,simTime().dbl() - pk->getCreationTime().dbl());
                                EV << "No previous info, so update hops estimation before deleting..." << endl;
                              }
                             EV << "FA id: " <<  pk->getTreeId() << " already checked here by best route, discarding packet " << pk->getName() << endl;
@@ -3396,11 +3514,11 @@ void AntNet::handleMessage(cMessage *msg)
                             return;
                         }
                     } else {  // no need to check hops count
-                    EV << "FA id: " <<  pk->getTreeId() << " already checked here by best route, discarding packet " << pk->getName() << endl;
-                    emit(dropSignal, (long)pk->getByteLength());
-                    //EV << "Control packets, neighbours: " << nbCounter << " FA: " << faCounter++ << " BA: "<< baCounter << endl; // increase FA before deleted
-                    delete pk;
-                    return;
+                            EV << "FA id: " <<  pk->getTreeId() << " already checked here by best route, discarding packet " << pk->getName() << endl;
+                            emit(dropSignal, (long)pk->getByteLength());
+                            //EV << "Control packets, neighbours: " << nbCounter << " FA: " << faCounter++ << " BA: "<< baCounter << endl; // increase FA before deleted
+                            delete pk;
+                            return;
                             }
                 }
                                  }
@@ -3639,6 +3757,7 @@ void AntNet::handleMessage(cMessage *msg)
                                     win = ptable2[aux[3]];
                                     estimatedHops=htable[destAddr][aux[3]];
                     }   }  }
+                    estimatedHops=estimatedHops; // nop, nosense but skip warning from IDE
                     //EV << "Branch 0: " << branchA << " branch 1: " << branchB << " branch 2: "<< branchC << " branch 3: " <<  branchD << endl;
                    // EV << "Selected gate: "<< outGateIndex << " with pheromone value:"<< win << " and estimated hops:"<< estimatedHops << endl;
 
@@ -3668,6 +3787,22 @@ void AntNet::handleMessage(cMessage *msg)
         pk->setTransientNodes(pk->getHopCount() ,myAddress);
         showRoutingInfo(destAddr);
         EV << "forwarding packet " << pk->getName() << " on gate index " << outGateIndex << " with prob: " << win << " and estimated hops: "<< htable[destAddr][outGateIndex] << endl;
+        if ((pk->getKind()) == 0 && (dataRouting->boolValue())) { // data packet and active Data routing
+            int hopsEstimation = htable [destAddr] [outGateIndex];
+
+            if (k == 0) { // first jump, from source or (if reply data packet) dest node
+                pk->setTravelTime(totalTime); // store last travelTime
+
+            } else {
+                if (symmetricRouting->boolValue()) {
+                    updateRPTable(src,origin,simTime().dbl() -  pk->getCreationTime().dbl(),k);
+                } else {
+                    updateRPTable(src,origin,pk->getTravelTime().dbl() - getLastTime(src,origin,k), k);
+                }
+                updateRPTable(destAddr,outGateIndex, getLastTime (destAddr,outGateIndex,hopsEstimation), hopsEstimation);
+            }
+            showRoutingInfo();
+        }
         pk->setHopCount(pk->getHopCount()+1);
         emit(outputIfSignal, outGateIndex);
         if (pk->getKind() == 2 || (pk->getKind() == 4) || (pk->getKind() == 5)) controlHops++; // increase control Hops counter
@@ -3826,6 +3961,17 @@ void AntNet::handleMessage(cMessage *msg)
             }
             // optional neighbour table checking needed to get error (better change routing table to -1 when  change (out of range) detected
             EV << "forwarding packet " << pk->getName() << " on gate index " << outGateIndex << endl;
+            showRTable();
+            if (!isConnected(outGateIndex)) { // Path lost, error
+                EV << "Address " << destAddr << " unreachable by routing table right now (error on table), discarding packet " << pk->getName() << endl;
+                EV << "Update routing table to unknown path"<< endl;
+                rtable[destAddr] = -1;
+                emit(dropSignal, (long)pk->getByteLength());
+                dropCounter++;
+                delete pk;
+                routeRequest(destAddr);
+                return;
+                            }
             pk->setHopCount(pk->getHopCount()+1);
             emit(outputIfSignal, outGateIndex);
 
@@ -4046,29 +4192,43 @@ void AntNet::finish()
 //using namespace std;
   totalCounter= dataCounter+count.sum;
   avgHops= avgHops / hitCounter;
-  if (proBaCounter > 0) EV << "Proactive BA packets: " << proBaCounter << " on node "<< getParentModule()->getName() << endl;
+  if (dropCounter > 0) EV << "Drop data packets: " << dropCounter << endl;
+  //if (proBaCounter > 0) EV << "Proactive BA packets: " << proBaCounter << " on node "<< getParentModule()->getName() << endl;
   if (proactiveCounter > 0) EV << "Proactive FA packets: " << proactiveCounter << " on node "<< getParentModule()->getName() << endl;
   if (repairCounter) EV << "Local repair FA packets: " << repairCounter << " on node "<< getParentModule()->getName() << endl;
   // EV << "Control hops: " << controlHops << endl; // too much in no simulation mode
   //EV << "Data packets: " << dataCounter << " drop packets: " << dropCounter << " Total (Control+Data): "<< totalCounter << endl;
   emit(controlHopsSignal, controlHops);
   emit(overheadCostSignal, controlHops2 + controlHops);
-  if ((myAddress ==7)|| (myAddress==2)) { // hostX or Kle dest addresses
+  if ((isSrcAddress(myAddress) && dataReply->boolValue()) ||
+       (isDestAddress(myAddress))   ) {  //((myAddress ==7)|| (myAddress==2)) { // hostX or Kle dest addresses (destination addresses
       EV << getParentModule()->getName() << " Address: "<< myAddress <<" Simulation time: " << simTime()<< " Delay: "<< datarate <<"s" <<" jitter: " << jit << "ms"<< endl;
       EV << "Control packets: (nb (redundant), fa, ba) : " << nbCounter  << " (" << redundant << "), " << faCounter << ", " << baCounter << endl;
       EV << "Data packets: " << dataCounter << " drop packets: " << dropCounter << " Total (Control+Data): "<< totalCounter << endl;
-      EV << "Arrived packets: " << hitCounter <<  " Hit ratio: " << double (hitCounter)/ double(1+dataCounter) << endl;
-      EV << "Total data packets:"<< numData <<" ; New hit ratio"<< double (hitCounter)/ double(numData) << endl;
+      EV << "Arrived packets: " << hitCounter << endl; //  " Hit ratio: " << double (hitCounter)/ double(1+dataCounter) << endl;
+      EV << "Total data packets:"<< numData << endl; //" ; New hit ratio"<< double (hitCounter)/ double(numData) << endl;
       EV << "Average travel time: " << avgTravel / hitCounter << endl;
       EV << "Average hops: " << avgHops << endl;
       EV << "Minimum hops: "<< minHops << endl;
       EV << "Control hops: " << controlHops << " ; control hops2:"<< controlHops+controlHops2 <<endl;
-      emit(hitRatioSignal, double (hitCounter)/ double(numData));
+      EV << "Data reply packets: " << pkReplyCounter << endl;
+      double hitRatio = 0;
+      if (isSrcAddress(myAddress) && dataReply->boolValue()) {
+          //EV << "Data reply packets: " << pkReplyCounter << endl;
+          //EV << "Hit ratio (source): " << double (hitCounter) / double (numData / (2)) << endl; // *srcAddresses.size()))-1) << endl;
+          hitRatio =  double (hitCounter)/ double (numData / (2));
+      } else {
+          if (dataReply->boolValue()) hitRatio = double (hitCounter)/ ((double( numData / 2)) + 1);
+          else    hitRatio = double (hitCounter)/ double(numData);
+      }
+      EV << "Final hit ratio: "<< hitRatio << endl;
+      emit(hitRatioSignal, hitRatio);
+      //emit(hitRatioSignal, double (hitCounter)/ double(numData));
       if (mySort->longValue() == 1) // static routing
           EV << "Static routing Conditions: numNodes:"<< numNodes->longValue() << " max hops rate:" << maxHopsRate->doubleValue() << " maxHops:"<< maxHops << " sort:" << mySort->operator int() << endl;
           else {
-          EV << "Conditions: Routing table init: " << rTableInit->boolValue() << " numNodes:"<< numNodes->longValue() << " stochastic:"<< stochastic->boolValue() << " Data coef(beta):" << dataCoef->longValue() <<" max hops rate:" << maxHopsRate->doubleValue() << " maxHops:"<< maxHops <<" metric: "<< metrics->longValue() << " pheromone coef:"<< coefPh->doubleValue() << " take 1st path:"<< take1stPath->boolValue() << " flooding: "<< flooding->boolValue() << " evaporation:"<< evaporation->boolValue() << " sort:" << mySort->operator int() <<" ants to App:" << antsToApp->operator bool() << " updateVTtime:" << updateVTime->doubleValue() << " local repair:"<< localRepair->boolValue() << " reply time:"<< replyTime->doubleValue()<<endl;
-          EV << "AntWMNet conditions; data coef: " << dataCoef->longValue() << " good diff:" << goodDiffusion->boolValue() << " hello time:" << helloTime->doubleValue() << " hop time:" << hopTime->doubleValue()<<" maxLocalRepFloods:" << maxLocalRepairFlooding->longValue() <<" baPro:" << proBa->boolValue() << " checkTime:"<< checkTime->doubleValue() << " alternateCheck:" << alternateCheck->boolValue() << " cutRange:"<< cutRange->longValue() << " cutRangePro:" << cutRangePro->longValue() << endl;
+          EV << "Conditions: Routing table init: " << rTableInit->boolValue() << " numNodes:"<< numNodes->longValue() << " stochastic:"<< stochastic->boolValue() << " Data coef(beta):" << dataCoef->longValue() <<" max hops rate:" << maxHopsRate->doubleValue() << " maxHops:"<< maxHops <<" metric: "<< metrics->longValue() << " pheromone coef:"<< coefPh->doubleValue() << " take 1st path:"<< take1stPath->boolValue() << " flooding: "<< flooding->boolValue() << " evaporation:"<< evaporation->boolValue() << " sort:" << mySort->operator int() <<" ants to App:" << antsToApp->operator bool() << " updateVTtime:" << updateVTime->doubleValue() << " local repair:"<< localRepair->boolValue() << " reply time:"<< replyTime->doubleValue() << " dataReply:" << dataReply->boolValue() << " dataReplyTime:"<< dataReplyTime->doubleValue() << endl;
+        //  EV << "AntWMNet conditions; data coef: " << dataCoef->longValue() << " good diff:" << goodDiffusion->boolValue() << " hello time:" << helloTime->doubleValue() << " hop time:" << hopTime->doubleValue()<<" maxLocalRepFloods:" << maxLocalRepairFlooding->longValue() <<" baPro:" << proBa->boolValue() << " checkTime:"<< checkTime->doubleValue() << " alternateCheck:" << alternateCheck->boolValue() << " cutRange:"<< cutRange->longValue() << " cutRangePro:" << cutRangePro->longValue() <<" symmetric:"<< symmetricRouting->boolValue() << " dataRouting:"<< dataRouting->boolValue() <<  endl;
           }
       if (mySort->longValue() == 4) { // AODV branch
           std::ofstream myfile("aodv-control.csv", myfile.app );
@@ -4076,7 +4236,7 @@ void AntNet::finish()
                if (myfile.is_open())
                {
                totalCounter= dataCounter+nbCounter+rreqCounter+rrepCounter+rerrCounter;
-               myfile << nbCounter << " " << rreqCounter << " " << rrepCounter << " " << rerrCounter <<  " " <<  rreqCounter+rrepCounter+rerrCounter << " " << dataCounter << " " <<  dropCounter << " " << totalCounter <<  " "  << controlHops << " " << toDoubleCalc(double (hitCounter)/ double(numData)) << " " << toDoubleCalc(avgTravel / double(hitCounter)) << " "<< toDoubleCalc(avgHops) <<"\n";
+               myfile << nbCounter << " " << rreqCounter << " " << rrepCounter << " " << rerrCounter <<  " " <<  rreqCounter+rrepCounter+rerrCounter << " " << dataCounter << " " <<  dropCounter << " " << totalCounter <<  " "  << controlHops << " " << toDoubleCalc(hitRatio) << " " << toDoubleCalc(avgTravel / double(hitCounter)) << " "<< toDoubleCalc(avgHops) <<"\n";
                // on our sample one packet have no time to reach destination
                myfile.close();
                 }
@@ -4088,14 +4248,14 @@ void AntNet::finish()
               if (myfile.is_open())
               {
 
-                myfile << count.nb << " " <<  proactiveCounter << " " << repairCounter << " " << count.ba << " " << phDiffCounter << " " << count.sum <<  " " <<  faCounter+baCounter+proactiveCounter+repairCounter << " " << dataCounter << " " <<  dropCounter << " " << totalCounter <<  " "  << controlHops << " " << controlHops2+controlHops << " " <<toDoubleCalc(double (hitCounter)/ double(1+dataCounter)) << " " << toDoubleCalc(avgTravel / double(hitCounter)) << " "<< toDoubleCalc(avgHops) <<"\n";
+                myfile << count.nb << " " <<  proactiveCounter << " " << repairCounter << " " << count.ba << " " << phDiffCounter << " " << count.sum <<  " " <<  faCounter+baCounter+proactiveCounter+repairCounter << " " << dataCounter << " " <<  dropCounter << " " << totalCounter <<  " "  << controlHops << " " << controlHops2+controlHops << " " <<toDoubleCalc(double (hitRatio)) << " " << toDoubleCalc(avgTravel / double(hitCounter)) << " "<< toDoubleCalc(avgHops) <<"\n";
                 // on our sample one packet have no time to reach destination
                 myfile.close();
               }
               else { EV << "Unable to open file" << endl; }
 
 
-  } else // other no destination nodes
+  } else // other no destination or source nodes
   {
       if (mySort->longValue() == 4) { // AODV branch no destination nodes
                                     std::ofstream myfile("aodv-control.csv", myfile.app );

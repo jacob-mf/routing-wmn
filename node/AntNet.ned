@@ -40,6 +40,8 @@ simple AntNet
         bool symmetricRouting=default(false); // select if symmetric routes are on
         bool stochastic=default(true); // Define if follow stochastic formula
         bool evaporation=default(true); //define evaporation in routing table values
+        bool dataRouting=default(false); // define if data packets can deploy routing info on tables
+        bool dataReply=default (false); // define if data reply packets are launched as response of arrived data packet
         bool antsToApp=default(true); // choose if ants packets go to Application level
         bool goodDiffusion = default(true); // Define if use good diffusion (of best estimation hops) , default true
         volatile double sendFirstRREQ @unit(s)  = default(0.03s); // time to send first  RREQ packet in AODV 
@@ -49,11 +51,13 @@ simple AntNet
         bool localRepair=default(false); // select local repair on error node for AODV option 
         bool proBa = default (true); // active Proactive Backward ants
         bool alternateCheck = default(true); // active alternate launching of proactive BA from destination and source
+        bool powerUpdate = default (false); // select power update on data and BA routing update
         volatile double sendIaTime @unit(s) = default(exponential(1s)); // time between generating packets,
         																// here to perform good hit ratio
         string destAddresses; // contains all the destination addresses
         string srcAddresses; // contains all the source addresses
         double helloTime @unit(s) = default(1s); // time interval to send hello packets , kind = 1 
+        double dataReplyTime @unit (s) =default(0s); // data reply waiting time
         double updateVTime @unit(ms) = default(0ms); // time until update Visiting Table 
         											// (default average 1 hop travel time)
         double hopTime @unit (s) = default(0.020s); // hop time estimation, default 20ms

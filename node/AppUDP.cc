@@ -260,6 +260,7 @@ void AppUDP::handleMessage(cMessage *msg)
                     emit(sentPkSignal,pk);
                     send(pk,"out");
                 }
+                setup = setup;
             } else
     {
         // Handle incoming packet
