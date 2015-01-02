@@ -468,7 +468,7 @@ void AntNet::initialize()
     if (srcAddresses.size() > 1) numData = numData * srcAddresses.size(); // estimation of data packets if more source nodes
     if (dataReply->boolValue()) numData= (numData * 2) -((1*srcAddresses.size())); // - 1);
    numData = numData * destAddresses.size();
-   EV << "Data packets to launch on network: "<< numData << endl;
+   EV << "Data packets to launch on network: "<< numData << " SrcAddressses size:" << srcAddresses.size() << endl;
    int j = getParentModule()->gateSize("port"); // network neighbours searching
     int numDest =0;
     int gateDest[7]; // Initialise array
@@ -516,17 +516,18 @@ void AntNet::initialize()
     }
 
 
-    if ((myAddress == 2) ||  (myAddress == 8) || (myAddress ==11)) { //if node Kli or other source nodes
-       if  (mySort->longValue() == 4) { // AODV branch
-           if ((numNodes->longValue() > 10 ) && (myAddress == 11)) {
+    //if ((myAddress == 2) ||  (myAddress == 8) || (myAddress ==11)) { //if node Kli or other source nodes
+    if (isSrcAddress(myAddress)) {
+        if  (mySort->longValue() == 4) { // AODV branch
+      //     if ((numNodes->longValue() > 10 ) && (myAddress == 11)) {
               generateRREQ = new cMessage("firstRREQ");
               scheduleAt(simTime()+sendFirstRREQ->doubleValue(),generateRREQ);
               EV << "Generate packet First RREQ from address: "<< myAddress << endl;
-            }
-            if ((numNodes->longValue() == 9 ) && (myAddress == 8)) {
-               generateRREQ = new cMessage("firstRREQ");
-               scheduleAt(simTime()+sendFirstRREQ->doubleValue(),generateRREQ);
-               EV << "Generate packet First RREQ from address: "<< myAddress << endl;
+       //     }
+        //    if ((numNodes->longValue() == 9 ) && (myAddress == 8)) {
+         //      generateRREQ = new cMessage("firstRREQ");
+           //    scheduleAt(simTime()+sendFirstRREQ->doubleValue(),generateRREQ);
+             //  EV << "Generate packet First RREQ from address: "<< myAddress << endl;
              }
       }
 
@@ -537,13 +538,13 @@ void AntNet::initialize()
                check2->setKind(8); // flag as checking self message (launching proactive BA)
                scheduleAt(simTime() + checkingTime, check2); // in checkTime ,or 2* checkTime (control overhead cost)
            }
-           if ((numNodes->longValue() == 9 ) && (myAddress == 8)) { // basic, default scenario
+           if ((numNodes->longValue() == 9 ) && (isSrcAddress(myAddress))) { // basic, default scenario
                cMessage * check3 = new cMessage("checking");
                check3->setKind(8);
                scheduleAt(simTime() + checkingTime, check3); // in checkTime or double to control overhead cost
            }
        }
-    }
+    //}
     if (visitTime->doubleValue() > 0) { // visiting table checking active
         cMessage * visitMsg = new cMessage("Visiting table checking");
         visitMsg->setKind(7);
@@ -589,6 +590,7 @@ void AntNet::beginDataReply(int dest, int gate) // start data  reply process to 
     pk->setByteLength(1024);
     pk->setSrcAddr(myAddress);
     pk->setDestAddr(dest);
+    pk->setHopCount(1);
     pk->setTransientNodesArraySize(maxArray->longValue()); // initialise to safe value
     // beware high values(100<) cause critical memory errors
     EV << "generating packet " << pkname << endl;
@@ -1045,6 +1047,7 @@ bool AntNet::isSrcAddress(int addr)
 { // check if it is a source address
 
     for (unsigned int n=0; n< srcAddresses.size(); n++ ) {
+        //EV << "checking if source, address: " << srcAddresses[n] << endl;
         if (addr == srcAddresses[n]) return true;
     }
     return false;
@@ -1583,6 +1586,19 @@ void AntNet::routeRequest(int dest)
            else send(pk->dup(), "out", k);
            localSent++;
                                                                                      }
+        if (mySort->longValue() == 4) {
+            if ( getParentModule()->gate("port$o",k)->isConnected() && (ntable[k] <= 0)) {
+                // also good idea to check neighbour table (maybe better just checking if noise channel between
+                EV << "Connection detected between  nodes in " << getParentModule()->getName() << " gateOut: " << k << endl;
+                pk->setTransientNodes(0,myAddress); // store myAddress on step 0
+                EV << "Flooding! forwarding packet " << pk->getName() << " on gate index " << k << ", copy: "<< localSent << endl;
+                emit(outputIfSignal, k);
+                controlHops++; // increase control Hops counter
+                if (localSent == 0)  send(pk,"out",k);
+                else send(pk->dup(), "out", k);
+                localSent++;
+            }
+        }
                                            }
    EV << "Control hops: " << controlHops << endl;
 }
@@ -1793,7 +1809,7 @@ void AntNet::sendProactiveFA(int dest, double cost,int hops,int origin)
    int cont=0;
    if (bestHopsEstimation(dest) == 0) { // no idea about dest location
        for (int j=0; j < maxChoices; j++) {
-            if (j != origin) { // spread over network but origin gate
+            if ((j != origin) && (isConnected(j))) { // spread over network but origin gate and unconnected ones
                emit(outputIfSignal, j);
                if (cont == 0){
                    EV << "Forwarding packet " << pkname << " on gate index " << j << endl;
@@ -1850,7 +1866,7 @@ void AntNet::sendProactiveFAtoSrc(int source, double cost,int hops,int origin)
         int cont=0;
         if (bestHopsEstimation(srcAddresses[i]) == 0) { // no idea about source location
             for (int j=0; j < maxChoices; j++) {
-                if (j != origin) { // spread over network but origin gate
+                if ((j != origin) && (isConnected(j))) { // spread over network but origin gate and unconnected gates
                     emit(outputIfSignal, j);
                     if (cont == 0){
                         EV << "Forwarding packet " << pkname << " on gate index " << j << endl;
@@ -3484,7 +3500,7 @@ void AntNet::handleMessage(cMessage *msg)
                         // process to check if pk take the shortest route by the moment(isShortestPath(dest,g hops))
                             //updateHTable(pk->getSrcAddr(),origin,k);
                             // could be good to store cost time here, to better calculation of symmetric pheromone
-                              if  ((cutRange->longValue() == 1) && (isEqualPath(src, k))) {
+                              if  ((cutRange->longValue() == 1) && (isEqualPath(src, k)) && (k > 1)) { // not valid by neighbours update,check
                                   //  cut if worst or equal
                                         updateHTable(src,origin,k);
                                         EV << "FA id: " <<  pk->getTreeId() << " already checked here by equal route (in hops), discarding packet " << pk->getName() << endl;
@@ -4211,12 +4227,12 @@ void AntNet::finish()
       EV << "Average hops: " << avgHops << endl;
       EV << "Minimum hops: "<< minHops << endl;
       EV << "Control hops: " << controlHops << " ; control hops2:"<< controlHops+controlHops2 <<endl;
-      EV << "Data reply packets: " << pkReplyCounter << endl;
+      EV << "Data reply packets: " << pkReplyCounter << " data packets (to dest): "<< ((double( numData / 2)) + 1) << " numData /(2*num sources): "<< double (numData / (2* srcAddresses.size())) << endl;
       double hitRatio = 0;
       if (isSrcAddress(myAddress) && dataReply->boolValue()) {
           //EV << "Data reply packets: " << pkReplyCounter << endl;
           //EV << "Hit ratio (source): " << double (hitCounter) / double (numData / (2)) << endl; // *srcAddresses.size()))-1) << endl;
-          hitRatio =  double (hitCounter)/ double (numData / (2));
+          hitRatio =  double (hitCounter)/ double (numData / (2* srcAddresses.size())); // pkReplyCounter?
       } else {
           if (dataReply->boolValue()) hitRatio = double (hitCounter)/ ((double( numData / 2)) + 1);
           else    hitRatio = double (hitCounter)/ double(numData);

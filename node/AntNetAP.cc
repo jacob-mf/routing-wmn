@@ -419,7 +419,8 @@ void AntNetAP::initialize()
             visitMsg->setKind(7);
             scheduleAt(simTime() + 1 +visitTime->doubleValue(), visitMsg);
         }
-        if ((myAddress == 2) ||  (myAddress == 8) || (myAddress ==11)) { //if node Kli or other source nodes
+        if (isSrcAddress(myAddress)) {
+        //if ((myAddress == 2) ||  (myAddress == 8) || (myAddress ==11)) { //if node Kli or other source nodes
                             if  (mySort->longValue() == 4) { // AODV branch
                                 generateRREQ = new cMessage("firstRREQ");
                                 scheduleAt(simTime()+sendFirstRREQ->doubleValue(),generateRREQ);
@@ -450,6 +451,7 @@ void AntNetAP::beginDataReply(int dest, int gate) // start data  reply process t
     pk->setByteLength(1024);
     pk->setSrcAddr(myAddress);
     pk->setDestAddr(dest);
+    pk->setHopCount(1);
     pk->setTransientNodesArraySize(maxArray->longValue()); // initialise to safe value
     // beware high values(100<) cause critical memory errors
     EV << "generating packet " << pkname << endl;
@@ -1273,7 +1275,19 @@ void AntNetAP::routeRequest(int dest)
            if (localSent == 0)  send(pk,"out",k);
            else send(pk->dup(), "out", k);
            localSent++;
-                                                                                     }
+       if (mySort->longValue() == 4) {
+           if ( getParentModule()->gate("port$o",k)->isConnected() && (ntable[k] <= 0)) {
+              // also good idea to check neighbour table (maybe better just checking if noise channel between
+              EV << "Connection detected between  nodes in " << getParentModule()->getName() << " gateOut: " << k << endl;
+              pk->setTransientNodes(0,myAddress); // store myAddress on step 0
+              EV << "Flooding! forwarding packet " << pk->getName() << " on gate index " << k << ", copy: "<< localSent << endl;
+              emit(outputIfSignal, k);
+              controlHops++; // increase control Hops counter
+              if (localSent == 0)  send(pk,"out",k);
+              else send(pk->dup(), "out", k);
+              localSent++;
+                       }
+                   }                                                                             }
                                            }
    EV << "Control hops: " << controlHops << endl;
 }
@@ -1463,7 +1477,8 @@ void AntNetAP::sendProactiveFA(int dest, double cost,int hops,int origin)
    int cont=0;
    if (bestHopsEstimation(dest) == 0) { // no idea about dest location
        for (int j=0; j < maxChoices; j++) {
-            if (j != origin) { // spread over network but origin gate
+           if ((j != origin) && (isConnected(j))) { // spread over network but origin gate and unconnected ones
+           //if (j != origin) { // spread over network but origin gate
                emit(outputIfSignal, j);
                if (cont == 0){
                    EV << "Forwarding packet " << pkname << " on gate index " << j << endl;
@@ -1520,7 +1535,8 @@ void AntNetAP::sendProactiveFAtoSrc(int source, double cost,int hops,int origin)
         int cont=0;
         if (bestHopsEstimation(srcAddresses[i]) == 0) { // no idea about source location
             for (int j=0; j < maxChoices; j++) {
-                if (j != origin) { // spread over network but origin gate
+                if ((j != origin) && (isConnected(j))) { // spread over network but origin gate and unconnected ones
+                //if (j != origin) { // spread over network but origin gate
                     emit(outputIfSignal, j);
                     controlHops++; // increase control Hops counter
                     if (cont == 0) {
@@ -2969,7 +2985,7 @@ void AntNetAP::handleMessage(cMessage *msg)
                       // new process to check if pk take the shortest route by the moment (isShorterPath(dest,g hops) )
                          //updateHTable(src,origin,hops);
                          // could be good to store cost time here, to better calculation of symmetric pheromone
-                         if  ((cutRange->longValue() == 1) && (isEqualPath(src, hops))) {
+                         if  ((cutRange->longValue() == 1) && (isEqualPath(src, hops)) && (hops > 1)) {
                              //  cut if worst or equal
                               updateHTable(src,origin,hops);
                               updateTTable(src, origin, hops, travelTime); // symmetric time to source
@@ -3645,11 +3661,11 @@ void AntNetAP::finish()
       EV << "Average travel time: " << avgTravel / hitCounter << endl;
       EV << "Average hops: " << avgHops << endl;
       double hitRatio = 0;
-      EV << "Data reply packets: " << pkReplyCounter << endl;
+      EV << "Data reply packets: " << pkReplyCounter << " data packets (to dest): "<< ((double( numData / 2)) + 1) << " numData /(2*num sources): "<< double (numData / (2* srcAddresses.size())) << endl;
       if (isSrcAddress(myAddress) && dataReply->boolValue()) {
                 //EV << "Data reply packets: " << pkReplyCounter << endl;
                 EV << "Hit ratio (source): " << double (hitCounter) / double (numData / 2) << endl; // - srcAddresses.size()))-1) << endl;
-                hitRatio =  double (hitCounter)/ double (numData / 2) ;
+                hitRatio =  double (hitCounter)/ double (numData / (2 * srcAddresses.size())) ;
       } else {
           if (dataReply->boolValue()) hitRatio = double (hitCounter)/ ((double( numData / 2)) + 1);
           else    hitRatio = double (hitCounter)/ double(numData);
