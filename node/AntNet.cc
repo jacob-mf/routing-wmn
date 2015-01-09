@@ -3924,6 +3924,14 @@ void AntNet::handleMessage(cMessage *msg)
                 if (localRepair->boolValue()) { // local repair branch, dunno if will be performing anytime
                     if (waitingReply) {
                         EV << "Waiting active local repair active procedure... "  << endl;
+                        EV << "Sending reply timer message again, in case is stalled, in " << replyTime->doubleValue()+1 << " seconds"<< endl;
+                        pk->setKind(4); // poner paquete  a tipo RERR
+                        char pkname[40];
+                        sprintf(pkname,"Reply-timer-from-%d", myAddress);
+                        pk->setName(pkname); // renombrar paquete
+                        pk->setDisplayString("i=msg/resp_s,red"); // RERR in red
+                        showRTable();
+                        scheduleAt(simTime() +replyTime->doubleValue()+1,pk->dup());// send replyTimer (on same pk) to check route request success
                         delete pk;
                         EV << "Packet deleted " << endl;
                         return;
