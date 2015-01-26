@@ -63,15 +63,15 @@ network WmnStats
         }
     submodules:
         ap1: Terminal {
-            @display("i=device/accesspoint");
-            @display("p= 260,240;r=60,,#707070");
+            @display("i=device/accesspoint;p=83,242");
+            @display("p= 260,240;r=60,,#707070"); // ;r=60,,#707070"); comment for better ant appreciation picture
             address = 1;
             gates:
                 port[5];
         }
         ap2: Terminal {
-            @display("i=device/accesspoint;p=350,242");
-            @display("p= 370,240;r=60,,#707070");
+            @display("i=device/accesspoint;p=290,242");
+            @display("p= 370,240;r=60,,#707070"); // ;r=60,,#707070");
             address = 3;
 
             gates:
@@ -79,44 +79,44 @@ network WmnStats
         }
         hostA: Terminal {
             address = 4;
-            @display("p=220,160;r=60,,#707070");
+            @display("p=220,160;r=60,,#707070"); // ;r=60,,#707070");
             gates:
                 port[4];
         }
         hostB: Terminal {
-            @display("p=300,160;r=60,,#707070");
+            @display("p=300,160;r=60,,#707070"); //;r=60,,#707070");
             address = 5;
             gates:
                 port[4];
         }
         hostC: Terminal {
-            @display("p=380,160;r=60,,#707070");
+            @display("p=380,160;r=60,,#707070"); // ;r=60,,#707070");
             address = 6;
             gates:
                 port[4];
         }
         hostX: Terminal {
             // mobile terminal
-            @display("i=/device/cellphone;p=379,62;r=60,,#707070");
+            @display("i=/device/cellphone;p=379,62;r=60,,#707070"); //;r=60,,#707070");
             @display("i=device/cellphone");
             address = 7;
             gates:
                 port[5];
         }
         hostD: Terminal {
-            @display("p=220,333;r=60,,#707070");
+            @display("p=220,333;r=60,,#707070"); // ;r=60,,#707070");
             address = 8;
             gates:
                 port[4];
         }
         hostE: Terminal {
-            @display("p=290,333;r=60,,#707070");
+            @display("p=290,333;r=60,,#707070"); // ;r=60,,#707070");
             address = 9;
             gates:
                 port[4];
         }
         hostF: Terminal {
-            @display("p=370,333;r=60,,#707070");
+            @display("p=370,333;r=60,,#707070"); // ;r=60,,#707070");
             address = 10;
             gates:
                 port[6];
