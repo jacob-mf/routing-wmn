@@ -3680,6 +3680,12 @@ void AntNetAP::finish()
       }
       EV << "Final hit ratio: "<< hitRatio << endl;
       emit(hitRatioSignal, hitRatio);
+      if (mySort->longValue() == 1) // static routing
+          EV << "Static routing Conditions: numNodes:"<< numNodes->longValue() << " max hops rate:" << maxHopsRate->doubleValue() << " maxHops:"<< maxHops << " sort:" << mySort->operator int() << endl;
+      else {
+           EV << "Conditions: Routing table init: " << rTableInit->boolValue() << " numNodes:"<< numNodes->longValue() << " stochastic:"<< stochastic->boolValue() << " Data coef(beta):" << dataCoef->longValue() <<" max hops rate:" << maxHopsRate->doubleValue() << " maxHops:"<< maxHops <<" metric: "<< metrics->longValue() << " pheromone coef:"<< coefPh->doubleValue() << " take 1st path:"<< take1stPath->boolValue() << " flooding: "<< flooding->boolValue() << " evaporation:"<< evaporation->boolValue() << " sort:" << mySort->operator int() <<" ants to App:" << " updateVTtime:" << updateVTime->doubleValue() << " local repair:"<< localRepair->boolValue() << " reply time:"<< replyTime->doubleValue() << " dataReply:" << dataReply->boolValue() << " dataReplyTime:"<< dataReplyTime->doubleValue() << endl;
+           EV << "AntWMNet conditions; data coef: " << dataCoef->longValue() << " good diff:" << goodDiffusion->boolValue() << " hello time:" << helloTime->doubleValue() << " hop time:" << hopTime->doubleValue()<<" maxLocalRepFloods:" << maxLocalRepairFlooding->longValue() <<" baPro:" << proBa->boolValue() << " checkTime:"<< checkTime->doubleValue() << " alternateCheck:" << alternateCheck->boolValue() << " cutRange:"<< cutRange->longValue() << " cutRangePro:" << cutRangePro->longValue() <<" symmetric:"<< symmetricRouting->boolValue() << " dataRouting:"<< dataRouting->boolValue() << " powerUpdate:" << powerUpdate->boolValue() << endl;
+      }
       if (mySort->longValue() == 4) { // AODV branch
                 std::ofstream myfile("aodv-control.csv", myfile.app );
 

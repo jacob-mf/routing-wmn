@@ -550,17 +550,19 @@ void AntNet::initialize()
         visitMsg->setKind(7);
         scheduleAt(simTime().dbl() + 1 +visitTime->doubleValue(), visitMsg);
     }
-    if ((myAddress == 7 ) && mobile->boolValue())  // node cell phone X, start moving on if mobile scenario
-    {
-        //updateETable(8,0);// evaporation checking
-        move1 = new cMessage("Move 1"); // toggle comment on static studies
-        scheduleAt(14.63,move1);
+    if (myAddress == 7 ) { // node cell phone X
+        if ( mobile->boolValue())  // start moving on if mobile scenario
+        {
+            //updateETable(8,0);// evaporation checking
+            move1 = new cMessage("Move 1"); // toggle comment on static studies
+            scheduleAt(14.63,move1);
+        }
         // initial BA proactive test at checkTime (default 21s interval)
-        if ((mySort->longValue() == 2) && (proBa->boolValue())) { // only for AntWMNet routing
-            cMessage * check = new cMessage("checking");
-            check->setKind(8);
-            scheduleAt(simTime() + checkTime->doubleValue(),check);
-            // in checkTime, 2*checkTime (different interval from source node)
+    if ((mySort->longValue() == 2) && (proBa->boolValue())) { // only for AntWMNet routing
+         cMessage * check = new cMessage("checking");
+         check->setKind(8);
+         scheduleAt(simTime() + checkTime->doubleValue(),check);
+         // in checkTime, 2*checkTime (different interval from source node)
         }
     }
 //                if ((myAddress == 4 )) { // just testing initReactiveFA process from A to route to node F (10)
@@ -1088,7 +1090,7 @@ bool AntNet::locateNeighbor (int dest, int & outgate)
 }
 
 void AntNet::moveNode(int pos)
-{ // simulate movement on node X cell phone by different phases
+{ // simulate movement on node X cell phone by different phases, Pre: mobile option on
     //int j = getParentModule()->gateSize("port");
     double dr= 8000000;double ruido =2;
     double jit=uniform(0,7) ;double retraso= (2+jit)/1000; //int ypos=58;
@@ -4252,7 +4254,7 @@ void AntNet::finish()
           EV << "Static routing Conditions: numNodes:"<< numNodes->longValue() << " max hops rate:" << maxHopsRate->doubleValue() << " maxHops:"<< maxHops << " sort:" << mySort->operator int() << endl;
           else {
           EV << "Conditions: Routing table init: " << rTableInit->boolValue() << " numNodes:"<< numNodes->longValue() << " stochastic:"<< stochastic->boolValue() << " Data coef(beta):" << dataCoef->longValue() <<" max hops rate:" << maxHopsRate->doubleValue() << " maxHops:"<< maxHops <<" metric: "<< metrics->longValue() << " pheromone coef:"<< coefPh->doubleValue() << " take 1st path:"<< take1stPath->boolValue() << " flooding: "<< flooding->boolValue() << " evaporation:"<< evaporation->boolValue() << " sort:" << mySort->operator int() <<" ants to App:" << antsToApp->operator bool() << " updateVTtime:" << updateVTime->doubleValue() << " local repair:"<< localRepair->boolValue() << " reply time:"<< replyTime->doubleValue() << " dataReply:" << dataReply->boolValue() << " dataReplyTime:"<< dataReplyTime->doubleValue() << endl;
-        //  EV << "AntWMNet conditions; data coef: " << dataCoef->longValue() << " good diff:" << goodDiffusion->boolValue() << " hello time:" << helloTime->doubleValue() << " hop time:" << hopTime->doubleValue()<<" maxLocalRepFloods:" << maxLocalRepairFlooding->longValue() <<" baPro:" << proBa->boolValue() << " checkTime:"<< checkTime->doubleValue() << " alternateCheck:" << alternateCheck->boolValue() << " cutRange:"<< cutRange->longValue() << " cutRangePro:" << cutRangePro->longValue() <<" symmetric:"<< symmetricRouting->boolValue() << " dataRouting:"<< dataRouting->boolValue() <<  endl;
+          EV << "AntWMNet conditions; data coef: " << dataCoef->longValue() << " good diff:" << goodDiffusion->boolValue() << " hello time:" << helloTime->doubleValue() << " hop time:" << hopTime->doubleValue()<<" maxLocalRepFloods:" << maxLocalRepairFlooding->longValue() <<" baPro:" << proBa->boolValue() << " checkTime:"<< checkTime->doubleValue() << " alternateCheck:" << alternateCheck->boolValue() << " cutRange:"<< cutRange->longValue() << " cutRangePro:" << cutRangePro->longValue() <<" symmetric:"<< symmetricRouting->boolValue() << " dataRouting:"<< dataRouting->boolValue() << " powerUpdate:" << powerUpdate->boolValue() << endl;
           }
       if (mySort->longValue() == 4) { // AODV branch
           std::ofstream myfile("aodv-control.csv", myfile.app );
